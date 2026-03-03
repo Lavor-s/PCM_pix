@@ -1,5 +1,16 @@
 from __future__ import annotations
 
+"""
+features.py — подготовка датасета для суррогатных нейросетей.
+
+Мы берём "mesh tables" (таблицы из симулятора) и приводим их к виду:
+- признаки X: [a, d, b] (геометрия)
+- цели y: [Rcos, Rsin, Tcos, Tsin] (амплитуда+фаза через cos/sin)
+
+Так модель учится предсказывать комплексные коэффициенты без "скачков" фазы.
+Также считаем A = 1 - (R + T1) как в исходном ноутбуке.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence, Dict, Any
@@ -37,6 +48,7 @@ def load_mesh_tables(cfg: Dict[str, Any], base_dir: str | Path = "data") -> list
 
 
 def _str_to_complex_angle(col: pd.Series) -> pd.Series:
+    """Конвертирует колонку вида 'a+bi' в фазу angle(x) в диапазоне [0..2π)."""
     col = col.apply(lambda x: complex(str(x).replace("i", "j")))
     col[col == (1 + 1j)] = np.nan
     col = col.apply(lambda x: np.angle(x))
@@ -45,6 +57,7 @@ def _str_to_complex_angle(col: pd.Series) -> pd.Series:
 
 
 def clean_mesh_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Очистка/нормализация колонок таблицы — максимально близко к исходному ноутбуку."""
     df = df.copy()
 
     # как в ноутбуке: привести R/T в [0..1]

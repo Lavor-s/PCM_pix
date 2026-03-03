@@ -1,5 +1,20 @@
 from __future__ import annotations
 
+"""
+optimize_pso.py — целевая функция и оптимизация (PSO / DE / гибрид).
+
+Здесь собрана логика из старого ноутбука, но оформленная как функции:
+- f_vec(...) — целевая функция (векторизованная по частицам PSO)
+- run_pso(...) — запуск PSO (pyswarms)
+- run_pso_until(...) — PSO с перезапусками до достижения порога (как to_server_arch)
+- run_de_full(...) — differential_evolution с init_ar/constraints/callback, максимально 1-в-1
+- run_hybrid_pso_de(...) — последовательный PSO → DE
+
+Единицы:
+- оптимизация идёт в nm для a/d/b, а внутри f_vec мы переводим в метры (*1e-9),
+  чтобы совпасть с обучением суррогата.
+"""
+
 from dataclasses import dataclass
 from typing import Dict, Any
 
@@ -71,6 +86,7 @@ def f_vec(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
 
 
 def run_pso(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
+    """Один прогон PSO и сохранение best_pos/best_cost в run.results."""
     Nn = int(cfg.get("Nn", 11))
     n_particles = int(cfg.get("pso_n_particles", 3000))
     iters = int(cfg.get("pso_iters", 500))

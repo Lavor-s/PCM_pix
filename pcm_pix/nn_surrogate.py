@@ -1,4 +1,19 @@
 from __future__ import annotations
+# pyright: reportMissingImports=false
+
+"""
+nn_surrogate.py — суррогатные нейросети (PyTorch) + сохранение/загрузка.
+
+В проекте 2 суррогата:
+- для аморфного состояния (N=0)
+- для кристаллического состояния (N=1)
+
+Модель предсказывает 4 значения: [Rcos, Rsin, Tcos, Tsin].
+
+Поддерживаются 2 формата:
+- "new" формат: state_dict + joblib-скейлеры (повторяемо/безопаснее)
+- "legacy" формат: torch.save(model_object) и torch.save(scaler_object) из старого ноутбука
+"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +28,7 @@ import joblib
 
 
 def get_device() -> str:
+    """Возвращает 'cuda' только если CUDA реально работает, иначе 'cpu'."""
     if torch.cuda.is_available():
         try:
             x = torch.tensor([1.0], device="cuda")
@@ -25,6 +41,7 @@ def get_device() -> str:
 
 
 class Net(nn.Module):
+    """Архитектура сети как в исходном ноутбуке (3 → 64 → 64 → 32 → 4, tanh)."""
     def __init__(self):
         super().__init__()
         self.fc1 = nn.Linear(3, 64)
@@ -43,6 +60,12 @@ class Net(nn.Module):
 
 @dataclass
 class Surrogate:
+    """
+    Обёртка вокруг модели и скейлеров.
+
+    Важно: predict() принимает A,D,B (в метрах, как в mesh таблицах) и возвращает
+    физические значения (после inverse_transform).
+    """
     model: nn.Module
     scaler_x: MinMaxScaler
     scaler_y: MinMaxScaler
@@ -64,6 +87,7 @@ class Surrogate:
 
 
 def _save(run_models_dir: Path, tag: str, model: nn.Module, scaler_x: MinMaxScaler, scaler_y: MinMaxScaler) -> None:
+    """Сохраняем модель в 'new' формате: state_dict + joblib scalers."""
     run_models_dir.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), run_models_dir / f"{tag}.pt")
     joblib.dump(scaler_x, run_models_dir / f"{tag}_scaler_x.pkl")
@@ -71,6 +95,7 @@ def _save(run_models_dir: Path, tag: str, model: nn.Module, scaler_x: MinMaxScal
 
 
 def _load(run_models_dir: Path, tag: str, device: str) -> Surrogate:
+    """Загрузка 'new' формата."""
     model = Net()
     state = torch.load(run_models_dir / f"{tag}.pt", map_location="cpu")
     model.load_state_dict(state)
@@ -92,6 +117,7 @@ def _train_one(
     log_every: int = 200,
     logger=None,
 ) -> Tuple[Surrogate, Dict[str, float]]:
+    """Обучение одной сети + возврат базовых метрик train/test MSE."""
     scaler_x = MinMaxScaler(feature_range=feature_range)
     scaler_y = MinMaxScaler(feature_range=feature_range)
 

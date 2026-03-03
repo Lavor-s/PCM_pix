@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""
+io.py — загрузка исходных таблиц материалов.
+
+Здесь нет "магии": просто читаем файлы в pandas.DataFrame и возвращаем удобный контейнер.
+Пути можно задавать через cfg, чтобы в ноутбуке не было абсолютных путей.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any

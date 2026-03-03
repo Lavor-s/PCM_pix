@@ -1,0 +1,5 @@
+outputs/
+pcm_pix/__pycache__/
+pcm_pix/**/__pycache__/
+*.pyc
+.ipynb_checkpoints/

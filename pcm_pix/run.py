@@ -1,5 +1,18 @@
 from __future__ import annotations
 
+"""
+run.py — управление "запусками" (runs) и артефактами.
+
+Идея: каждый запуск ноутбука создаёт папку `outputs/<run_name>/` со структурой:
+- logs/    : логи (и вывод в консоль)
+- plots/   : графики (png/pdf)
+- models/  : модели + скейлеры
+- results/ : численные результаты/таблицы/solutions
+- gds/     : экспорт GDS (когда подключим)
+
+Так ноутбук остаётся тонким, а пути/логирование не размазаны по коду.
+"""
+
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -24,8 +37,9 @@ def _make_logger(log_file: Path) -> logging.Logger:
 
     # важно: чтобы при повторном запуске ячейки не было дублей в логах
     logger.handlers.clear()
-    
-    logger.propagate = False  # <-- ДОБАВЬ ЭТУ СТРОКУ
+
+    # важно для Jupyter: иначе сообщения "всплывают" в root-logger и печатаются дважды
+    logger.propagate = False
 
     fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 
