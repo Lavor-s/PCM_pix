@@ -2,3 +2,38 @@
 2026-03-03 11:56:10,339 | INFO | Notebook started
 2026-03-03 11:58:03,792 | INFO | run_dir=/home/slava/КВАНТЭЛ/GIT/PCM_pix/outputs/PCM_bagel_2025
 2026-03-03 11:58:03,795 | INFO | Notebook started
+2026-03-03 12:07:28,475 | INFO | run_dir=/home/slava/КВАНТЭЛ/GIT/PCM_pix/outputs/PCM_bagel_2025
+2026-03-03 12:07:28,479 | INFO | Notebook started
+2026-03-03 12:07:56,122 | INFO | run_dir=/home/slava/КВАНТЭЛ/GIT/PCM_pix/outputs/PCM_bagel_2025
+2026-03-03 12:07:56,127 | INFO | main.ipynb started
+2026-03-03 12:12:35,046 | INFO | materials loaded: sb2se3_am=171, sb2se3_cr=171
+2026-03-03 12:17:19,917 | INFO | materials loaded: sb2se3_am=171, sb2se3_cr=171
+2026-03-03 12:24:20,159 | INFO | dataset: df=98390, data_0=60360, data_1=38030
+2026-03-03 12:24:20,160 | INFO | X_0=(60360, 3) y_0=(60360, 4) | X_1=(38030, 3) y_1=(38030, 4)
+2026-03-03 12:27:18,339 | INFO | training surrogates (device=cuda, epochs=2000, lr=0.001)
+2026-03-03 12:29:42,615 | INFO | training surrogates (device=cpu, epochs=300, lr=0.001)
+2026-03-03 12:29:43,124 | INFO | epoch=0 train_loss=0.195208 test_loss=0.175513
+2026-03-03 12:30:13,316 | INFO | epoch=200 train_loss=0.046481 test_loss=0.046469
+2026-03-03 12:31:31,440 | INFO | training surrogates (device=cpu, epochs=400, lr=0.001)
+2026-03-03 12:31:32,084 | INFO | epoch=0 train_loss=0.229170 test_loss=0.207266
+2026-03-03 12:32:10,489 | INFO | epoch=200 train_loss=0.047483 test_loss=0.047535
+2026-03-03 12:32:42,162 | INFO | epoch=399 train_loss=0.034855 test_loss=0.034993
+2026-03-03 12:32:42,297 | INFO | epoch=0 train_loss=0.269578 test_loss=0.240919
+2026-03-03 12:32:56,856 | INFO | epoch=200 train_loss=0.063923 test_loss=0.062786
+2026-03-03 12:33:13,975 | INFO | epoch=399 train_loss=0.041948 test_loss=0.040982
+2026-03-03 12:33:13,981 | INFO | saved models to outputs/PCM_bagel_2025/models
+2026-03-03 12:33:13,982 | INFO | am metrics={'train_loss': 0.034855280071496964, 'test_loss': 0.03499330207705498} | cr metrics={'train_loss': 0.041947852820158005, 'test_loss': 0.0409817211329937}
+2026-03-03 12:33:13,984 | INFO | surrogates ready
+2026-03-03 12:37:33,630 | INFO | pred shape=(5, 4)
+2026-03-03 12:39:28,753 | INFO | legacy surrogates loaded
+2026-03-03 12:39:42,048 | INFO | legacy pred shape=(5, 4)
+2026-03-03 12:43:26,127 | INFO | legacy frozen into outputs/PCM_bagel_2025/models
+2026-03-03 12:43:31,773 | INFO | legacy surrogates loaded
+2026-03-03 12:44:52,271 | INFO | PSO start: particles=3000 iters=200 dims=37
+2026-03-03 12:45:24,494 | INFO | PSO done: cost=4.907229274330172
+2026-03-03 13:02:46,736 | INFO | saved solution pos_2026_03_03_example.json
+2026-03-03 13:04:30,159 | INFO | using preset pos=pos_2026_03_03_example (len=37)
+2026-03-03 13:11:56,649 | INFO | PSO start: particles=200 iters=50 dims=37
+2026-03-03 13:11:57,419 | INFO | PSO done: cost=48.87621193523405
+2026-03-03 13:11:57,421 | INFO | DE start: maxiter=50 popsize=20 mutation=0.9 recomb=0.2 polish=True
+2026-03-03 13:13:40,542 | INFO | DE done: cost=8.265725998606564
