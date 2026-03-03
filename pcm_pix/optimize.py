@@ -4,7 +4,8 @@ Facade module for optimization utilities.
 We keep `optimize_pso.py` as the implementation (historical name), but expose a stable
 import path: `from pcm_pix.optimize import ...`.
 
-По-русски: это "витрина" функций оптимизации, чтобы в ноутбуке были короткие импорты.
+По-русски: это "витрина" функций оптимизации, чтобы в ноутбуке были короткие импорты,
+а внутреннюю реализацию можно было рефакторить без переписывания ноутбуков.
 """
 
 from __future__ import annotations

@@ -77,7 +77,16 @@ def f_vec(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
     d3 = (pred_1[:, :, 0] - RCc) ** 2
     d4 = (pred_1[:, :, 1] - RSc) ** 2
 
-    # penalties как у тебя
+    # penalties как у тебя (перенесено 1-в-1 из старых ноутбуков).
+    #
+    # ВНИМАНИЕ: формулы ниже *исторически* выглядят немного странно:
+    # - условие в комментариях/LinearConstraint: a_i - d_i >= 50nm и d_i - b_i >= 100nm
+    # - в penalty для constr1 используется (d - a + 50e-9), но модуль берётся от (d - a + 100e-9)
+    #   (то есть "50" и "100" смешаны).
+    #
+    # Это может быть опечаткой в исходном ноутбуке, но мы оставляем как есть, чтобы
+    # результат совпадал со старой версией. Если решим исправлять — лучше сделать это
+    # отдельным осознанным шагом и сравнить влияние на найденные решения.
     constr1 = (np.sign(d - a + 50e-9) + 1) * np.abs(d - a + 100e-9) * 1e9
     constr2 = (np.sign(b - d + 100e-9) + 1) * np.abs(b - d + 100e-9) * 1e9
     penalty = constr1 + constr2
@@ -85,8 +94,18 @@ def f_vec(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
     return np.sum(d1 + d2 + d3 + d4 + penalty, axis=1)
 
 
-def run_pso(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
-    """Один прогон PSO и сохранение best_pos/best_cost в run.results."""
+def run_pso(sur0, sur1, cfg: Dict[str, Any], run, save_artifacts: bool = True) -> PSOResult:
+    """
+    Один прогон PSO.
+
+    По умолчанию сохраняет артефакты в `run.results`:
+    - best_cost.txt
+    - best_pos.txt
+
+    Для hyperopt имеет смысл отключать запись (save_artifacts=False), чтобы:
+    - не перетирать финальные best_* файлами от промежуточных прогонов
+    - не тратить время на лишний IO в цикле подбора
+    """
     Nn = int(cfg.get("Nn", 11))
     n_particles = int(cfg.get("pso_n_particles", 3000))
     iters = int(cfg.get("pso_iters", 500))
@@ -118,9 +137,10 @@ def run_pso(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
 
     run.logger.info("PSO done: cost=%s", cost)
 
-    # сохраним результат
-    (run.results / "best_cost.txt").write_text(str(cost) + "\n", encoding="utf-8")
-    (run.results / "best_pos.txt").write_text(np.array2string(pos, separator=", ") + "\n", encoding="utf-8")
+    if save_artifacts:
+        # сохраним результат
+        (run.results / "best_cost.txt").write_text(str(cost) + "\n", encoding="utf-8")
+        (run.results / "best_pos.txt").write_text(np.array2string(pos, separator=", ") + "\n", encoding="utf-8")
 
     return PSOResult(cost=float(cost), pos=np.array(pos))
 
@@ -229,7 +249,7 @@ def run_hybrid_pso_de(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
     1) PSO -> 2) DE (с x0 = pos из PSO)
     """
     best_pso = run_pso(sur0, sur1, cfg, run)
-    best_de = run_de(sur0, sur1, cfg, run, x0=best_pso.pos)
+    best_de = run_de_full(sur0, sur1, cfg, run, pos=best_pso.pos)
 
     # финально считаем лучшим DE (обычно он улучшает)
     (run.results / "best_cost.txt").write_text(str(best_de.cost) + "\n", encoding="utf-8")
@@ -303,7 +323,7 @@ def f_de(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
     return f_vec(X, sur0, sur1, cfg)
 
 
-def run_pso_until(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
+def run_pso_until(sur0, sur1, cfg: Dict[str, Any], run, save_artifacts: bool = True) -> PSOResult:
     """
     Полное соответствие to_server_arch:
     повторяем PSO с reset(), пока cost не станет <= порога (или пока не исчерпаем рестарты).
@@ -314,7 +334,7 @@ def run_pso_until(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
     max_restarts = int(cfg.get("pso_max_restarts", 0))   # сколько раз можно reset()
 
     # используем твою существующую run_pso, но добавляем цикл
-    best = run_pso(sur0, sur1, cfg, run)
+    best = run_pso(sur0, sur1, cfg, run, save_artifacts=save_artifacts)
 
     restarts = 0
     while best.cost > threshold and restarts < max_restarts:
@@ -322,7 +342,7 @@ def run_pso_until(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
         run.logger.info("PSO restart %s/%s (cost=%s > %s)", restarts, max_restarts, best.cost, threshold)
 
         # пересоздадим оптимизатор тем же кодом, что в run_pso (самый простой способ)
-        best = run_pso(sur0, sur1, cfg, run)
+        best = run_pso(sur0, sur1, cfg, run, save_artifacts=save_artifacts)
 
     return best
 

@@ -1,7 +1,7 @@
 """
 pcm_pix package.
 
-The intended public API for notebooks is via:
+Публичный API для ноутбуков/скриптов (то, что предполагается импортировать напрямую):
 - pcm_pix.run
 - pcm_pix.io
 - pcm_pix.features

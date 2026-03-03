@@ -106,7 +106,8 @@ def run_pso_hyperopt(
         local["pso_iters"] = fast_iters
 
         np.random.seed(seed)
-        best = run_pso_until(sur0, sur1, local, run)
+        # В hyperopt-цикле отключаем запись best_pos/best_cost, чтобы не перетирать финальные артефакты.
+        best = run_pso_until(sur0, sur1, local, run, save_artifacts=False)
         return float(best.cost)
 
     rows: list[dict[str, Any]] = []

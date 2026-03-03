@@ -13,7 +13,7 @@ import numpy as np
 
 
 def wrap_to_pi(x: np.ndarray) -> np.ndarray:
-    """Wrap angle array to [-pi, pi]."""
+    """Нормализует (wrap) массив углов в диапазон [-π, π]."""
     return (x + np.pi) % (2 * np.pi) - np.pi
 
 
@@ -26,11 +26,19 @@ def evaluate_surrogate(
     return_pred: bool = False,
 ) -> dict[str, Any]:
     """
-    Evaluate a trained surrogate on a subset of ds.data_0 / ds.data_1.
+    Оценивает качество суррогата на подвыборке `ds.data_0` / `ds.data_1`.
 
-    Expects ds_df columns: a,d,b,R,T1,phi_R,phi_T1.
-    Surrogate is expected to have predict(A,D,B)-> ndarray(N,4) where columns are
-    [Rcos, Rsin, Tcos, Tsin] in physical units (after inverse scaling).
+    Ожидаемые колонки `ds_df`: `a`, `d`, `b`, `R`, `T1`, `phi_R`, `phi_T1`.
+
+    Контракт суррогата:
+    - `sur.predict(a, d, b) -> ndarray(shape=(N, 4))`
+    - столбцы: `[Rcos, Rsin, Tcos, Tsin]` уже в "физическом" масштабе
+      (после inverse_transform скейлера).
+
+    Как считаем метрики:
+    - амплитуды: $R = \\sqrt{Rcos^2 + Rsin^2}$, $T = \\sqrt{Tcos^2 + Tsin^2}$
+    - фазы: `atan2(sin, cos)`; ошибка фазы считается как wrap в [-π, π], чтобы
+      не было ложных больших ошибок на границе 2π.
     """
     rng = np.random.default_rng(seed)
 
