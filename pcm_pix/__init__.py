@@ -9,5 +9,6 @@ pcm_pix package.
 - pcm_pix.metrics
 - pcm_pix.optimize
 - pcm_pix.hyperopt
+- pcm_pix.gds  (экспорт GDS для фабрикации; требует gdspy)
 """
 
