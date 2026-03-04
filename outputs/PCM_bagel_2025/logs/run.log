@@ -2826,3 +2826,35 @@
 2026-03-03 16:46:45,990 | INFO | QA cr: {'label': 'cr', 'n': 5000, 'R_mae': 0.002615670527771366, 'R_rmse': 0.005520090827137365, 'T_mae': 0.0029981692687898044, 'T_rmse': 0.007326874279732934, 'phiR_mae': 0.023530945085900278, 'phiR_rmse': 0.09787853324710623, 'phiT_mae': 0.016187780947852316, 'phiT_rmse': 0.12370148593910678, 'R_out_of_01': 17, 'T_out_of_01': 1}
 2026-03-03 16:46:52,662 | INFO | saved solution pos_2026_03_03_example.json
 2026-03-03 16:46:52,663 | INFO | presets saved to outputs/PCM_bagel_2025/results/solutions
+2026-03-04 11:13:40,608 | INFO | run_dir=/home/slava/КВАНТЭЛ/GIT/PCM_pix/outputs/PCM_bagel_2025
+2026-03-04 11:13:40,620 | INFO | main_clean started
+2026-03-04 11:13:42,149 | INFO | materials loaded: sb2se3_am=171 sb2se3_cr=171
+2026-03-04 11:13:47,845 | INFO | dataset: df=98390 data_0=60360 data_1=38030
+2026-03-04 11:13:47,850 | INFO | X_0=(60360, 3) y_0=(60360, 4) | X_1=(38030, 3) y_1=(38030, 4)
+2026-03-04 11:13:55,839 | INFO | loading surrogates from outputs/PCM_bagel_2025/models
+2026-03-04 11:13:55,879 | INFO | surrogates loaded: new-format
+2026-03-04 11:13:57,342 | INFO | QA am: {'label': 'am', 'n': 5000, 'R_mae': 0.0025238442625315737, 'R_rmse': 0.005561314707335684, 'T_mae': 0.003090215510718619, 'T_rmse': 0.007655435974840966, 'phiR_mae': 0.024273266672979497, 'phiR_rmse': 0.0940070147887566, 'phiT_mae': 0.014582505534191211, 'phiT_rmse': 0.1154908809914579, 'R_out_of_01': 14, 'T_out_of_01': 4}
+2026-03-04 11:13:57,343 | INFO | QA cr: {'label': 'cr', 'n': 5000, 'R_mae': 0.002615670527771366, 'R_rmse': 0.005520090827137365, 'T_mae': 0.0029981692687898044, 'T_rmse': 0.007326874279732934, 'phiR_mae': 0.023530945085900278, 'phiR_rmse': 0.09787853324710623, 'phiT_mae': 0.016187780947852316, 'phiT_rmse': 0.12370148593910678, 'R_out_of_01': 17, 'T_out_of_01': 1}
+2026-03-04 11:13:58,834 | INFO | saved solution pos_2026_03_03_example.json
+2026-03-04 11:13:58,835 | INFO | presets saved to outputs/PCM_bagel_2025/results/solutions
+2026-03-04 11:14:00,518 | INFO | PSO hyperparams loaded from pso_refine.csv: c1=1.365595582786494 c2=1.3004900273877351 w=0.3332738612391048
+2026-03-04 11:14:36,206 | INFO | DE hyperparams loaded from de_refine.csv: mutation=0.2420622190083343 recombination=0.7001234155368052 popsize=54
+2026-03-04 11:18:11,396 | INFO | run_dir=/home/slava/КВАНТЭЛ/GIT/PCM_pix/outputs/PCM_bagel_2025
+2026-03-04 11:18:11,400 | INFO | main_clean started
+2026-03-04 11:18:11,786 | INFO | materials loaded: sb2se3_am=171 sb2se3_cr=171
+2026-03-04 11:18:19,478 | INFO | dataset: df=98390 data_0=60360 data_1=38030
+2026-03-04 11:18:19,482 | INFO | X_0=(60360, 3) y_0=(60360, 4) | X_1=(38030, 3) y_1=(38030, 4)
+2026-03-04 11:18:19,585 | INFO | loading surrogates from outputs/PCM_bagel_2025/models
+2026-03-04 11:18:19,612 | INFO | surrogates loaded: new-format
+2026-03-04 11:18:19,779 | INFO | QA am: {'label': 'am', 'n': 5000, 'R_mae': 0.0025238442625315737, 'R_rmse': 0.005561314707335684, 'T_mae': 0.003090215510718619, 'T_rmse': 0.007655435974840966, 'phiR_mae': 0.024273266672979497, 'phiR_rmse': 0.0940070147887566, 'phiT_mae': 0.014582505534191211, 'phiT_rmse': 0.1154908809914579, 'R_out_of_01': 14, 'T_out_of_01': 4}
+2026-03-04 11:18:19,781 | INFO | QA cr: {'label': 'cr', 'n': 5000, 'R_mae': 0.002615670527771366, 'R_rmse': 0.005520090827137365, 'T_mae': 0.0029981692687898044, 'T_rmse': 0.007326874279732934, 'phiR_mae': 0.023530945085900278, 'phiR_rmse': 0.09787853324710623, 'phiT_mae': 0.016187780947852316, 'phiT_rmse': 0.12370148593910678, 'R_out_of_01': 17, 'T_out_of_01': 1}
+2026-03-04 11:18:19,860 | INFO | saved solution pos_2026_03_03_example.json
+2026-03-04 11:18:19,863 | INFO | saved solution pos_server_2026_03_04_night.json
+2026-03-04 11:18:19,865 | INFO | presets saved to outputs/PCM_bagel_2025/results/solutions
+2026-03-04 11:18:19,981 | INFO | PSO hyperparams loaded from pso_refine.csv: c1=1.365595582786494 c2=1.3004900273877351 w=0.3332738612391048
+2026-03-04 11:18:20,083 | INFO | DE hyperparams loaded from de_refine.csv: mutation=0.2420622190083343 recombination=0.7001234155368052 popsize=54
+2026-03-04 11:18:20,169 | INFO | using preset pos_server_2026_03_04_night cost=3.696285
+2026-03-04 11:18:20,173 | INFO | FINAL cost=3.696285
+2026-03-04 11:18:20,181 | INFO | FINAL pos_len=37
+2026-03-04 11:18:20,383 | INFO | saved solution final_preset.json
+2026-03-04 11:18:20,388 | INFO | final solution saved: final_preset.json
