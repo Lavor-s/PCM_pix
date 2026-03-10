@@ -1,0 +1,11 @@
+# PCM_pix — зависимости проекта
+numpy
+pandas
+matplotlib
+torch
+scikit-learn
+joblib
+pyswarms
+
+# Опционально: для экспорта GDS (gds.py, gds.ipynb)
+# gdspy

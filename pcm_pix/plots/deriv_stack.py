@@ -1,31 +1,44 @@
 from __future__ import annotations
 
-"""
-deriv_stack.py — перенос "всей подноготной" для графика из `3rd art_PCM_bagel_2025.ipynb`
-(блок вокруг построения `ZXY_array`, `conv_corr_first/conv_corr_sec`, и финального графика
-с наложениями).
+r"""
+deriv_stack.py — перенос Фурье-оптики из `3rd art_PCM_bagel_2025.ipynb`
 
 Что делает этот модуль:
-- Загружает внешние карты (ZEMAX-подобные таблицы) из txt (utf16 + skiprows=15)
-- Считает "корреляционные" карты через FFT: `conv_corr_first` и `conv_corr_sec`
-  (перенос 1-в-1 исходных формул)
-- Формирует `ZXY_array` (для каждого уровня i и для каждой панели j=0/1)
-- Вычисляет теоретические/симуляционные экстремумы и ошибки (d1p/d3p и т.д.)
-- Строит итоговый график 1×2 с множеством наложений (слоёв), которые можно
-  включать/выключать через flags
 
-Важно про расширяемость:
-- график "ещё не закончен" и будет пополняться: поэтому ключевая идея —
-  расчёт отделён от рисования, а рисование — от отдельных overlays.
+1) `load_txt_table_utf16` — загрузка табличных данных из UTF‑16 txt (TAB, skiprows) в 2D `numpy` 
+2) `zemax_to_line` — извлечение 1D-сечения из 2D карты (по x или y) в стиле ZEMAX  
+3) `R_lum_fun` — LUM‑амплитудная поправка \(R\) для точки (u,v) для состояния `cr`/`am`  
+4) `phi_lum_fun` — LUM‑фазовая поправка \(\phi\) для точки (u,v) для состояния `cr`/`am`  
+
+5) `H_func_gauss` — 2D гауссиана (ядро \(H\)) для дальнейшего FFT‑расчёта  
+6) `conv_corr_first` — FFT→умножение на LUM (state=`cr`)→IFFT; возвращает (RES, Vx, Vy)  
+7) `conv_corr_sec` — как `conv_corr_first`, но LUM в режиме state=`am`  
+8) `build_s_list_from_alpha` — перевод списка \(\alpha\) в список \(s\) по формуле из ноутбука  
+9) `build_zxy_array` — строит набор `ZXYItem` (карты Z, сетки X/Y и сечения) для всех уровней и панелей  
+10) `min_by_cond` — находит `x`, где `y` минимален при условии на `x`  
+11) `max_by_cond` — находит `x`, где `y` максимален при условии на `x`  
+12) `compute_extrema_metrics` — считает теорию/симуляцию положений экстремумов и ошибки (d1p/d1n/d3p/d3n)  
+13) `neon_plot` — рисует “неоновую” линию (многослойный толстый контур)  
+14) `compute_neon_overlay_data` — загружает экспериментальные gauss_* и приводит их к координатам графика для overlay  
+15) `compute_deriv_stack_data` — “тяжёлый” расчёт: FFT‑карты, сечения, экстремумы, (опц.) neon; возвращает `DerivStackData`  
+
+16) `plot_deriv_stack_1x2_from_data` — “лёгкая” отрисовка 1×2 из готового `DerivStackData`  
+17) `plot_deriv_stack_1x2` — точка входа: посчитать данные + нарисовать 1×2 график по `cfg`
+
 """
 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from typing import Callable
+from numpy.typing import NDArray
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+from ..lum_tables import R_lum_cr_2, R_lum_am_2, phi_lum_cr_2, phi_lum_am_2 # Для люма
+from ..lum_tables import R_lum_cr_3, R_lum_am_3, phi_lum_cr_3, phi_lum_am_3 # Для конусов
+from .theory_pix_lum import f_step, pixel_edges
 
 # ----------------------------
 # I/O helpers (ZEMAX-like tables)
@@ -35,12 +48,11 @@ import matplotlib.pyplot as plt
 def load_txt_table_utf16(path: str | Path, *, skiprows: int = 15) -> np.ndarray:
     """
     Загружает таблицу из txt (как в старом ноутбуке через pandas.read_csv(..., encoding='utf16')).
-
     Формат: табличные числа, разделитель обычно TAB.
     Возвращаем 2D numpy array.
     """
     path = Path(path)
-    # genfromtxt устойчив к "рваным" строкам, но может дать NaN на мусоре — это ок.
+
     arr = np.genfromtxt(
         path,
         delimiter="\t",
@@ -54,24 +66,16 @@ def load_txt_table_utf16(path: str | Path, *, skiprows: int = 15) -> np.ndarray:
         arr = arr.reshape(-1, 1)
     return arr
 
-
-def zemax_to_line(
-    x_or_y: int,
-    val_cross: float,
-    N_dots: int,
-    N_fin: int,
-    x_width: float,
-    y_width: float,
-    Z_data: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
+def zemax_to_line(x_or_y: int, val_cross: float, N_dots: int, N_fin: int, x_width: float, y_width: float, Z_data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
-    Перенос 1-в-1 `ZEMAX_to_line` из 3rd art.
-
     x_or_y:
     - 0: вернуть сечение Z[:, ind] как функция x_vals
     - 1: вернуть сечение Z[ind, :] как функция y_vals
+    val_cross:
+    - по какой величине отсчитывается сечение    
 
-    x_width/y_width — в тех единицах, как в старом ноутбуке (обычно µm или mm — зависит от файла).
+    x_width/y_width:
+    - в тех единицах, как в старом ноутбуке (обычно µm или mm — зависит от файла).
     """
     x_min = -x_width / 2 * N_fin / N_dots
     x_max = x_width / 2 * N_fin / N_dots
@@ -93,73 +97,102 @@ def zemax_to_line(
     return y_vals, Z[ind, :]
 
 
-# ----------------------------
-# "LUM" correction (from old notebook)
-# ----------------------------
-
-
-@dataclass(frozen=True)
-class LumTables:
-    """
-    Табличные поправки из "люма".
-    В 3rd art эти массивы несколько раз переопределялись; здесь держим финальную
-    версию (для конусов), но даём возможность переопределить через CFG.
-    """
-
-    R_lum_cr: np.ndarray
-    R_lum_am: np.ndarray
-    phi_lum_cr: np.ndarray
-    phi_lum_am: np.ndarray
-
-
-def default_lum_tables_cones() -> LumTables:
-    # финальные значения из ячейки 148 (после переопределения "для конусов")
-    return LumTables(
-        R_lum_cr=np.array([0.85, 0.83, 0.71, 0.51, 0.10, 0.00, 0.32, 0.40, 0.65, 0.93, 0.97], dtype=float),
-        R_lum_am=np.array([0.97, 1.00, 0.97, 0.53, 0.09, 0.02, 0.15, 0.23, 0.06, 0.33, 0.77], dtype=float),
-        phi_lum_cr=np.array([2.1, 2.2, 2.2, 2.0, 2.0, -0.2, -1.4, -1.1, -1.6, -1.5, -1.3], dtype=float),
-        phi_lum_am=np.array([-0.6, -0.5, -0.8, -1.0, -0.8, -0.4, -1.0, -1.4, -2.4, -2.1, -1.8], dtype=float),
-    )
-
-
-def R_lum_fun(u: float, v: float, *, state: str, L: float, S: float, tables: LumTables) -> float:
-    """Перенос 1-в-1 `R_lum_fun`."""
-    if abs(u) >= S / 2 or abs(v) >= S / 2:
+def Transfer_fun(u: float, v: float, *, state: str, fun: Callable[..., NDArray | float], S: float):
+    """Передаточная функция"""
+    if abs(v) >= S / 2:
         return 0.0
-    # номер пикселя с 0 до 10
-    N = int((u - L / 2) // L + 1 + 5)
-    if state == "cr":
-        return float(tables.R_lum_cr[N])
-    return float(tables.R_lum_am[N])
+    
+
+def conv_corr(
+    *,
+    N: int, # кол-во точек
+    width: float = 20.0,      # ширина входного окна в м
+    field_fun:  Callable[..., np.ndarray],
+    field_kwargs: dict[str, Any] | None = None,
+    filt_fun: Callable[..., np.ndarray],
+    filt_kwargs: dict[str, Any] | None = None,
+    f_gl: float, #фокальное расстояние в м
+    wl_gl: float, #длина волны в м
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    "сворачиваем field_fun и filt_fun"
+    field_kwargs = {} if field_kwargs is None else field_kwargs
+    filt_kwargs  = {} if filt_kwargs  is None else filt_kwargs
+
+    # 1) Сетка (как X_ar/Y_ar)
+    X_ar = np.linspace(-width/2, width/2, N)
+    Y_ar = np.linspace(-width/2, width/2, N)
+    XX, YY = np.meshgrid(X_ar, Y_ar, indexing="xy")
+
+    # 2) Поле в пространстве
+    test_im = np.asarray(field_fun(XX, YY, **field_kwargs))
+    if test_im.shape != (N, N):
+        raise ValueError(f"field_fun must return shape {(N,N)}, got {test_im.shape}")
+
+    # 3) FFT и частотный сдвиг
+    RES = np.fft.fftshift(np.fft.fft2(test_im))
+
+    # 4) Оси U_x/U_y
+    #dx = 1e-3 * abs(X_ar[1] - X_ar[0])
+    #dy = 1e-3 * abs(Y_ar[1] - Y_ar[0])
+    dx = abs(X_ar[1] - X_ar[0])
+    dy = abs(Y_ar[1] - Y_ar[0])
+    U_x = np.fft.fftshift(np.fft.fftfreq(N, d=dx)) * f_gl * wl_gl
+    U_y = np.fft.fftshift(np.fft.fftfreq(N, d=dy)) * f_gl * wl_gl
+    UX, UY = np.meshgrid(U_x, U_y, indexing="xy")
+
+    # 5) Домножение на фильтр в (u,v)
+    H = np.asarray(filt_fun(UX, UY, **filt_kwargs))
+    if H.shape != (N, N):
+        raise ValueError(f"filt_fun must return shape {(N,N)}, got {H.shape}")
+    RES *= H
+
+    # 6) IFFT (важно: убрать shift перед ifft2)
+    RES = np.fft.ifft2(np.fft.ifftshift(RES))
+
+    # 7) Оси V_x/V_y как у тебя
+    V_x = np.fft.ifftshift(np.fft.fftfreq(N, d=abs(U_x[1] - U_x[0]) / f_gl / wl_gl))
+    V_y = np.fft.ifftshift(np.fft.fftfreq(N, d=abs(U_y[1] - U_y[0]) / f_gl / wl_gl))
+    return RES, V_x, V_y
 
 
-def phi_lum_fun(u: float, v: float, *, state: str, L: float, S: float, tables: LumTables) -> float:
-    """Перенос 1-в-1 `phi_lum_fun`."""
-    if abs(u) >= S / 2 or abs(v) >= S / 2:
+
+
+
+
+
+
+
+
+#убить и обобщить на Transfer_fun
+def R_lum_fun(u: float, v: float, *, state: str, L: float, S: float) -> float:
+    """LUM‑амплитудная поправка (f_step по lum_tables). 0 вне [-S/2, S/2]."""
+    _ = L
+    if abs(v) >= S / 2:
         return 0.0
-    # номер пикселя с 0 до 10
-    N = int((u - L / 2) // L + 1 + 5)
-    if state == "cr":
-        return float(tables.phi_lum_cr[N])
-    return float(tables.phi_lum_am[N])
+    edges = pixel_edges(S, 11)
+    vals = R_lum_cr_3 if state == "cr" else R_lum_am_3
+    return float(f_step(np.asarray(u), edges, vals))
 
+#убить и обобщить на Transfer_fun
+def phi_lum_fun(u: float, v: float, *, state: str, L: float, S: float) -> float:
+    """LUM‑фазовая поправка (f_step по lum_tables). 0 вне [-S/2, S/2]."""
+    _ = L
+    if abs(v) >= S / 2:
+        return 0.0
+    edges = pixel_edges(S, 11)
+    vals = phi_lum_cr_3 if state == "cr" else phi_lum_am_3
+    return float(f_step(np.asarray(u), edges, vals))
 
-# ----------------------------
-# Core model: H_func + conv_corr_* (FFT)
-# ----------------------------
-
-
-def H_func_gauss(x: float, y: float, *, s: float, phi: float = 0.0, shift_x: float = 0.0, shift_y: float = 0.0) -> float:
+#def H_func_gauss(x: float, y: float, *, s: float, phi: float = 0.0, shift_x: float = 0.0, shift_y: float = 0.0) -> float:
+#убито и заменено на Gauss
+def Gauss(x: float, y: float, *, s: float, phi: float = 0.0, shift_x: float = 0.0, shift_y: float = 0.0) -> float:
     """
-    Та версия `H_func`, которая реально используется в блоке conv_corr_* в 3rd art:
-    простая гауссиана exp(-(x^2+y^2)/s^2).
-
-    Параметры phi/shift_* оставлены для будущих расширений (как в исходной сигнатуре).
+    Гаусс exp(-(((x-shift_x)**2  Any+ (y-shift_y)**2) / s**2)).
     """
-    _ = (phi, shift_x, shift_y)
-    return float(np.exp(-((x**2 + y**2) / s / s)))
+    _ = phi
+    return float(np.exp(-(((x-shift_x)**2 + (y-shift_y)**2) / s / s)))
 
-
+#убить и обобщить на conv_corr
 def conv_corr_first(
     *,
     s: float,
@@ -168,7 +201,6 @@ def conv_corr_first(
     wl_gl: float,
     L_gl: float,
     S_gl: float,
-    tables: LumTables,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Перенос 1-в-1 `conv_corr_first` (ячейка 162):
@@ -177,13 +209,13 @@ def conv_corr_first(
     - IFFT -> RES, плюс V_x/V_y (оси)
     """
     ref_im = np.zeros([N, N])
-    test_im = np.zeros([N, N])
+    test_im = np.zeros([N, N]) Any
 
     X_ar = np.linspace(-20, 20, N)
     Y_ar = np.linspace(-20, 20, N)
 
     for i in range(N):
-        for j in range(N):
+        fo -> tupler j in range(N):
             test_im[i, j] = H_func_gauss(X_ar[j], Y_ar[i], s=s, phi=np.pi / 2)
             # ref_im не используется в текущей версии (как и в 3rd art)
             _ = ref_im
@@ -195,8 +227,8 @@ def conv_corr_first(
     Nu, Nv = np.shape(RES)
     for i in range(Nu):
         for j in range(Nv):
-            RES[i, j] *= R_lum_fun(U_x[i], U_y[j], state="cr", L=L_gl, S=S_gl, tables=tables) * np.exp(
-                1j * phi_lum_fun(U_x[i], U_y[j], state="cr", L=L_gl, S=S_gl, tables=tables)
+            RES[i, j] *= R_lum_fun(U_x[i], U_y[j], state="cr", L=L_gl, S=S_gl) * np.exp(
+                1j * phi_lum_fun(U_x[i], U_y[j], state="cr", L=L_gl, S=S_gl)
             )
 
     RES = np.fft.ifft2(RES)
@@ -204,7 +236,7 @@ def conv_corr_first(
     V_y = np.fft.ifftshift(np.fft.fftfreq(np.shape(RES)[1], d=abs(U_y[1] - U_y[0]) / f_gl / wl_gl))
     return RES, V_x, V_y
 
-
+#убить и обобщить на conv_corr
 def conv_corr_sec(
     *,
     s: float,
@@ -213,7 +245,6 @@ def conv_corr_sec(
     wl_gl: float,
     L_gl: float,
     S_gl: float,
-    tables: LumTables,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Перенос 1-в-1 `conv_corr_sec` (ячейка 162):
@@ -237,14 +268,15 @@ def conv_corr_sec(
     Nu, Nv = np.shape(RES)
     for i in range(Nu):
         for j in range(Nv):
-            RES[i, j] *= R_lum_fun(U_x[i], U_y[j], state="am", L=L_gl, S=S_gl, tables=tables) * np.exp(
-                1j * phi_lum_fun(U_x[i], U_y[j], state="am", L=L_gl, S=S_gl, tables=tables)
+            RES[i, j] *= R_lum_fun(U_x[i], U_y[j], state="am", L=L_gl, S=S_gl) * np.exp(
+                1j * phi_lum_fun(U_x[i], U_y[j], state="am", L=L_gl, S=S_gl)
             )
 
     RES = np.fft.ifft2(RES)
     V_x = np.fft.ifftshift(np.fft.fftfreq(np.shape(RES)[0], d=abs(U_x[1] - U_x[0]) / f_gl / wl_gl))
     V_y = np.fft.ifftshift(np.fft.fftfreq(np.shape(RES)[1], d=abs(U_y[1] - U_y[0]) / f_gl / wl_gl))
     return RES, V_x, V_y
+
 
 
 # ----------------------------
@@ -277,7 +309,6 @@ def build_zxy_array(
     L_gl: float,
     S_gl: float,
     conv_N: int = 500,
-    tables: LumTables | None = None,
     y0_tol: float = 0.0,
 ) -> tuple[np.ndarray, list[ZXYItem]]:
     """
@@ -287,16 +318,15 @@ def build_zxy_array(
     - 0.0: строго как в ноутбуке (element == 0)
     - >0: использовать |y|<=tol, если из-за float-шума не нашлось ровно нуля
     """
-    tables = tables or default_lum_tables_cones()
     s_list = build_s_list_from_alpha(alpha, f_gl=f_gl, wl_gl=wl_gl, S_gl=S_gl)
 
     items: list[ZXYItem] = []
     for i in range(len(s_list)):
         for j in (0, 1):
             if j == 0:
-                Z, X, Y = conv_corr_sec(s=float(s_list[i]), N=int(conv_N), f_gl=f_gl, wl_gl=wl_gl, L_gl=L_gl, S_gl=S_gl, tables=tables)
+                Z, X, Y = conv_corr_sec(s=float(s_list[i]), N=int(conv_N), f_gl=f_gl, wl_gl=wl_gl, L_gl=L_gl, S_gl=S_gl)
             else:
-                Z, X, Y = conv_corr_first(s=float(s_list[i]), N=int(conv_N), f_gl=f_gl, wl_gl=wl_gl, L_gl=L_gl, S_gl=S_gl, tables=tables)
+                Z, X, Y = conv_corr_first(s=float(s_list[i]), N=int(conv_N), f_gl=f_gl, wl_gl=wl_gl, L_gl=L_gl, S_gl=S_gl)
 
             # 1-в-1 перестановка как в ноутбуке
             X, Y = np.meshgrid(Y, X)
@@ -323,7 +353,7 @@ def build_zxy_array(
 
     return s_list, items
 
-
+###todel
 def min_by_cond(arr_y: np.ndarray, arr_x: np.ndarray, cond_func_x) -> float:
     arr_x = np.array(arr_x, dtype=float)
     arr_y = np.array(arr_y, dtype=float)

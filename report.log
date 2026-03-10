@@ -14511,3 +14511,57 @@
  2.89311405e+02 5.09117773e+00 2.64808217e-01 8.31766066e-01
  8.73555828e-01]
 2026-03-03 15:14:47,794 - pyswarms.single.global_best - INFO - Optimize for 1000 iters with {'c1': 0.5, 'c2': 0.7, 'w': 0.6}
+2026-03-06 13:01:04,028 - autoreload - ERROR - Failed to reload module 'pcm_pix.plots.theory_pix_lum' from file '/media/slava/Data/git/PCM_pix/pcm_pix/plots/theory_pix_lum.py'
+Traceback (most recent call last):
+  File "/media/slava/Data/git/PCM_pix/.venv/lib/python3.12/site-packages/IPython/extensions/autoreload.py", line 325, in check
+    superreload(m, reload, self.old_objects)
+  File "/media/slava/Data/git/PCM_pix/.venv/lib/python3.12/site-packages/IPython/extensions/autoreload.py", line 584, in superreload
+    module = reload(module)
+             ^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 131, in reload
+    _bootstrap._exec(spec, module)
+  File "<frozen importlib._bootstrap>", line 866, in _exec
+  File "<frozen importlib._bootstrap_external>", line 991, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1129, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1059, in source_to_code
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/media/slava/Data/git/PCM_pix/pcm_pix/plots/theory_pix_lum.py", line 285
+    axs[0, 1].plot(x * 1e6, amp_phase_from_g(x, state = "am", D = D)[1] "b-", linewidth=0.9, markersize=2)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+2026-03-06 16:45:13,150 - autoreload - ERROR - Failed to reload module 'pcm_pix.plots.theory_pix_lum' from file '/media/slava/Data/git/PCM_pix/pcm_pix/plots/theory_pix_lum.py'
+Traceback (most recent call last):
+  File "/media/slava/Data/git/PCM_pix/.venv/lib/python3.12/site-packages/IPython/extensions/autoreload.py", line 325, in check
+    superreload(m, reload, self.old_objects)
+  File "/media/slava/Data/git/PCM_pix/.venv/lib/python3.12/site-packages/IPython/extensions/autoreload.py", line 584, in superreload
+    module = reload(module)
+             ^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 131, in reload
+    _bootstrap._exec(spec, module)
+  File "<frozen importlib._bootstrap>", line 866, in _exec
+  File "<frozen importlib._bootstrap_external>", line 991, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1129, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1059, in source_to_code
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/media/slava/Data/git/PCM_pix/pcm_pix/plots/theory_pix_lum.py", line 254
+    axs[0, 0].plot(x * 1e6, [T_phi_pix(x, state="am", D=D, Npix=Nn, f_step) * c1 for i in x], "r-", linewidth=0.5, markersize=2)
+                                                                          ^
+SyntaxError: positional argument follows keyword argument
+2026-03-06 17:16:40,574 - autoreload - ERROR - Failed to reload module 'pcm_pix.plots.deriv_stack' from file '/media/slava/Data/git/PCM_pix/pcm_pix/plots/deriv_stack.py'
+Traceback (most recent call last):
+  File "/media/slava/Data/git/PCM_pix/.venv/lib/python3.12/site-packages/IPython/extensions/autoreload.py", line 325, in check
+    superreload(m, reload, self.old_objects)
+  File "/media/slava/Data/git/PCM_pix/.venv/lib/python3.12/site-packages/IPython/extensions/autoreload.py", line 584, in superreload
+    module = reload(module)
+             ^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 131, in reload
+    _bootstrap._exec(spec, module)
+  File "<frozen importlib._bootstrap>", line 866, in _exec
+  File "<frozen importlib._bootstrap_external>", line 991, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1129, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1059, in source_to_code
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/media/slava/Data/git/PCM_pix/pcm_pix/plots/deriv_stack.py", line 81
+    x_vals = np.linspace(x_min, x_max, Nfrom .theory_pix_lum import f_step, pixel_edges_fin)
+                                                             ^^^^^^
+SyntaxError: invalid syntax
