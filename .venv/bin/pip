@@ -1,4 +1,4 @@
-#!/mnt/shared_drive/git/PCM_pix/.venv/bin/python3
+#!/media/slava/Data/git/PCM_pix/.venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys

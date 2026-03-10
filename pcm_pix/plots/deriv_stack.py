@@ -38,7 +38,7 @@ import matplotlib.pyplot as plt
 
 from ..lum_tables import R_lum_cr_2, R_lum_am_2, phi_lum_cr_2, phi_lum_am_2 # Для люма
 from ..lum_tables import R_lum_cr_3, R_lum_am_3, phi_lum_cr_3, phi_lum_am_3 # Для конусов
-from .theory_pix_lum import f_step, pixel_edges
+from .theory_pix_lum import f_step, pixel_edges, amp_phase_from_g, f_step, T_phi_pix
 
 # ----------------------------
 # I/O helpers (ZEMAX-like tables)
@@ -97,16 +97,76 @@ def zemax_to_line(x_or_y: int, val_cross: float, N_dots: int, N_fin: int, x_widt
     return y_vals, Z[ind, :]
 
 
-def Transfer_fun(u: float, v: float, *, state: str, fun: Callable[..., NDArray | float], S: float):
-    """Передаточная функция"""
-    if abs(v) >= S / 2:
-        return 0.0
-    
+def Transfer_function(u: float, v: float, mode: str, state: str, S: float, Npix: int=11):
+    """Передаточная функция. mode: theory, ideal_pixel, dataset_*, transparent"""
+    u = np.asarray(u, dtype=float)
+    v = np.asarray(v, dtype=float)
+
+    mask = (np.abs(u) < S / 2) & (np.abs(v) < S / 2)
+
+    match mode:
+        case "transparent":
+            return np.where(mask, 1.0 + 0.0j, 0.0 + 0.0j)
+
+        case "theory":
+            amp, phase = amp_phase_from_g(u, state=state, D=S)
+            H = amp * np.exp(1j * phase)
+            return np.where(mask, H, 0.0 + 0.0j)
+
+        case "ideal_pixel":
+            amp, phase = T_phi_pix(u, v, state=state, D=S, Npix=Npix, f_step=f_step)
+            H = amp * np.exp(1j * phase)
+            return np.where(mask, H, 0.0 + 0.0j)
+
+        case "dataset_2":
+            # 1) массивы амплитуды и фазы из LUM-таблиц
+            if state == "cr":
+                amp_vals = R_lum_cr_2
+                phi_vals = phi_lum_cr_2
+            elif state == "am":
+                amp_vals = R_lum_am_2
+                phi_vals = phi_lum_am_2
+            else:
+                raise ValueError(f"unknown state={state!r}")
+
+            # 2) геометрия пикселей вдоль u
+            Npix = len(amp_vals)
+            edges = pixel_edges(S, Npix)
+
+            # 3) ступенчатые функции по этим значениям
+            amp = f_step(u, edges, amp_vals)
+            phase = f_step(u, edges, phi_vals)
+            H = amp * np.exp(1j * phase)
+            return np.where(mask, H, 0.0 + 0.0j)
+
+
+        case "dataset_3":
+            # 1) массивы амплитуды и фазы из LUM-таблиц
+            if state == "cr":
+                amp_vals = R_lum_cr_3
+                phi_vals = phi_lum_cr_3
+            elif state == "am":
+                amp_vals = R_lum_am_3
+                phi_vals = phi_lum_am_3
+            else:
+                raise ValueError(f"unknown state={state!r}")
+
+            # 2) геометрия пикселей вдоль u
+            Npix = len(amp_vals)
+            edges = pixel_edges(S, Npix)
+
+            # 3) ступенчатые функции по этим значениям
+            amp = f_step(u, edges, amp_vals)
+            phase = f_step(u, edges, phi_vals)
+            H = amp * np.exp(1j * phase)
+            return np.where(mask, H, 0.0 + 0.0j)
+
+
 
 def conv_corr(
     *,
     N: int, # кол-во точек
-    width: float = 20.0,      # ширина входного окна в м
+    width: float,      # ширина входного окна в м
     field_fun:  Callable[..., np.ndarray],
     field_kwargs: dict[str, Any] | None = None,
     filt_fun: Callable[..., np.ndarray],
@@ -204,19 +264,19 @@ def conv_corr_first(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Перенос 1-в-1 `conv_corr_first` (ячейка 162):
-    - строим тестовую "картинку" из H_func на сетке [-20..20] (в условных единицах)
+    - строим тестовую "картинку" из Gauss на сетке [-20..20] (в условных единицах)
     - FFT -> спектр -> домножаем на lum-коррекции (cr)
     - IFFT -> RES, плюс V_x/V_y (оси)
     """
     ref_im = np.zeros([N, N])
-    test_im = np.zeros([N, N]) Any
+    test_im = np.zeros([N, N])
 
     X_ar = np.linspace(-20, 20, N)
     Y_ar = np.linspace(-20, 20, N)
 
     for i in range(N):
-        fo -> tupler j in range(N):
-            test_im[i, j] = H_func_gauss(X_ar[j], Y_ar[i], s=s, phi=np.pi / 2)
+        for j in range(N):
+            test_im[i, j] = Gauss(X_ar[j], Y_ar[i], s=s, phi=np.pi / 2)
             # ref_im не используется в текущей версии (как и в 3rd art)
             _ = ref_im
 
@@ -258,7 +318,7 @@ def conv_corr_sec(
 
     for i in range(N):
         for j in range(N):
-            test_im[i, j] = H_func_gauss(X_ar[j], Y_ar[i], s=s, phi=np.pi / 2)
+            test_im[i, j] = Gauss(X_ar[j], Y_ar[i], s=s, phi=np.pi / 2)
             _ = ref_im
 
     RES = np.fft.fftshift(np.fft.fft2(test_im))
@@ -276,6 +336,17 @@ def conv_corr_sec(
     V_x = np.fft.ifftshift(np.fft.fftfreq(np.shape(RES)[0], d=abs(U_x[1] - U_x[0]) / f_gl / wl_gl))
     V_y = np.fft.ifftshift(np.fft.fftfreq(np.shape(RES)[1], d=abs(U_y[1] - U_y[0]) / f_gl / wl_gl))
     return RES, V_x, V_y
+
+
+
+
+
+
+
+
+
+
+
 
 
 
