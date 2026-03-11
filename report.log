@@ -14565,3 +14565,21 @@ Traceback (most recent call last):
     x_vals = np.linspace(x_min, x_max, Nfrom .theory_pix_lum import f_step, pixel_edges_fin)
                                                              ^^^^^^
 SyntaxError: invalid syntax
+2026-03-11 16:08:44,121 - autoreload - ERROR - Failed to reload module 'pcm_pix.plots.deriv_stack' from file '/media/slava/Data/git/PCM_pix/pcm_pix/plots/deriv_stack.py'
+Traceback (most recent call last):
+  File "/media/slava/Data/git/PCM_pix/.venv/lib/python3.12/site-packages/IPython/extensions/autoreload.py", line 325, in check
+    superreload(m, reload, self.old_objects)
+  File "/media/slava/Data/git/PCM_pix/.venv/lib/python3.12/site-packages/IPython/extensions/autoreload.py", line 584, in superreload
+    module = reload(module)
+             ^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/importlib/__init__.py", line 131, in reload
+    _bootstrap._exec(spec, module)
+  File "<frozen importlib._bootstrap>", line 866, in _exec
+  File "<frozen importlib._bootstrap_external>", line 991, in exec_module
+  File "<frozen importlib._bootstrap_external>", line 1129, in get_code
+  File "<frozen importlib._bootstrap_external>", line 1059, in source_to_code
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/media/slava/Data/git/PCM_pix/pcm_pix/plots/deriv_stack.py", line 580
+    f"$\\alpha = \\dfrac{2w_0}{S} = \\dfrac{8 f \\lambda}{\\pi S s}$"
+                         ^
+SyntaxError: invalid decimal literal
