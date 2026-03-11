@@ -442,8 +442,6 @@ def plot_output_slices_1x2(
     S_gl: float = 165e-6,
     Npix: int = 11,
     xy_display: float = 10.0,
-    figsize: Tuple[float, float] = (16.0, 14.0),
-    dpi: int | None = 300,
     mode: str = "theory",
     alpha_list: list[float] | np.ndarray = (0.8, 0.7, 0.6, 0.5, 0.4, 0.3),
     exp_files: dict[tuple[float, str], str] | None = None,
@@ -461,208 +459,225 @@ def plot_output_slices_1x2(
 
     Риска по оси y для s_list[idx] совпадает с низом полосы (y = idx).
     """
-    if exp_files is None:
-        exp_files = {}
+
+    SMALL_SIZE = 8
+    MEDIUM_SIZE = 10
+    BIGGER_SIZE = 12
+    rc = {
+        "font.size": SMALL_SIZE,
+        "axes.titlesize": MEDIUM_SIZE,
+        "axes.labelsize": MEDIUM_SIZE,
+        "xtick.labelsize": SMALL_SIZE,
+        "ytick.labelsize": SMALL_SIZE,
+        "legend.fontsize": SMALL_SIZE,
+        "figure.titlesize": BIGGER_SIZE,
+        "figure.figsize": (7, 4),
+        "figure.dpi": 300,
+    }
+    with plt.rc_context(rc):
+
+        if exp_files is None:
+            exp_files = {}
+            
+        alpha_arr = np.array(alpha_list, dtype=float)
+        if alpha_arr.size == 0:
+            raise ValueError("alpha_list must contain at least one value")
+
+        s_arr = 2.0 / S_gl * wl_gl * f_gl / (np.pi * alpha_arr)
+        n_slices = alpha_arr.size
+        states = ["am", "cr"]
         
-    alpha_arr = np.array(alpha_list, dtype=float)
-    if alpha_arr.size == 0:
-        raise ValueError("alpha_list must contain at least one value")
+        fig, axes = plt.subplots(1, 2, squeeze=False)
+        axes = axes[0]
 
-    s_arr = 2.0 / S_gl * wl_gl * f_gl / (np.pi * alpha_arr)
-    n_slices = alpha_arr.size
-    states = ["am", "cr"]
-    
-    fig, axes = plt.subplots(1, 2, figsize=figsize, dpi=dpi, squeeze=False)
-    axes = axes[0]
+        # Вспомогательная гауссиана (как в plot_transfer_conv_stack)
+        def gauss2d(x: NDArray, y: NDArray, *, s: float, phi: float = np.pi / 2.0,
+                    shift_x: float = 0.0, shift_y: float = 0.0) -> NDArray:
+            _ = phi
+            return np.exp(-(((x - shift_x) ** 2 + (y - shift_y) ** 2) / (s ** 2)))
 
-    # Вспомогательная гауссиана (как в plot_transfer_conv_stack)
-    def gauss2d(x: NDArray, y: NDArray, *, s: float, phi: float = np.pi / 2.0,
-                shift_x: float = 0.0, shift_y: float = 0.0) -> NDArray:
-        _ = phi
-        return np.exp(-(((x - shift_x) ** 2 + (y - shift_y) ** 2) / (s ** 2)))
-
-    #Чтение и подготовка экспериментальной кривой
-    def load_exp_curve_1d(
-        path: str | Path,
-        *,
-        x_or_y: int,
-        val_cross: float,
-        N_dots: int,
-        N_fin: int,
-        x_width: float,
-        y_width: float,
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """
-        Читает файл LUM-формата и возвращает (x_vals, Z_line),
-        где x_vals — физическая координата (в тех же единицах, что x_width/y_width),
-        Z_line — нормированная (0..1) интенсивность.
-        """
-        Z_data = load_txt_table_utf16(path)      # 2D массив
-        # Z_data имеет форму (N_dots, N_dots) — вы зададите N_dots и ширины из своего эксперимента
-        x_vals, Z_line = zemax_to_line(
-            x_or_y=x_or_y,
-            val_cross=val_cross,
-            N_dots=N_dots,
-            N_fin=N_fin,
-            x_width=x_width,
-            y_width=y_width,
-            Z_data=Z_data,
-        )
-        # нормировка на максимум
-        Z_line = np.asarray(Z_line, dtype=float)
-        m = np.max(np.abs(Z_line))
-        if m > 0:
-            Z_line = Z_line / m
-        else:
-            Z_line = np.zeros_like(Z_line)
-        return x_vals, Z_line
-
-
-
-
-    for ax, state in zip(axes, states):
-        x_norm_global_min = None
-        x_norm_global_max = None
-
-        for idx, s in enumerate(s_arr):
-            RES_spatial, V_x, V_y = conv_corr(
-                N=N,
-                width=width,
-                field_fun=lambda X, Y, s_local=s: gauss2d(X, Y, s=s_local, phi=np.pi / 2),
-                field_kwargs={},
-                filt_fun=Transfer_function,
-                filt_kwargs={
-                    "mode": mode,
-                    "state": state,
-                    "S": S_gl,
-                    "Npix": Npix,
-                },
-                f_gl=f_gl,
-                wl_gl=wl_gl,
+        #Чтение и подготовка экспериментальной кривой
+        def load_exp_curve_1d(
+            path: str | Path,
+            *,
+            x_or_y: int,
+            val_cross: float,
+            N_dots: int,
+            N_fin: int,
+            x_width: float,
+            y_width: float,
+        ) -> tuple[np.ndarray, np.ndarray]:
+            """
+            Читает файл LUM-формата и возвращает (x_vals, Z_line),
+            где x_vals — физическая координата (в тех же единицах, что x_width/y_width),
+            Z_line — нормированная (0..1) интенсивность.
+            """
+            Z_data = load_txt_table_utf16(path)      # 2D массив
+            # Z_data имеет форму (N_dots, N_dots) — вы зададите N_dots и ширины из своего эксперимента
+            x_vals, Z_line = zemax_to_line(
+                x_or_y=x_or_y,
+                val_cross=val_cross,
+                N_dots=N_dots,
+                N_fin=N_fin,
+                x_width=x_width,
+                y_width=y_width,
+                Z_data=Z_data,
             )
-
-            alpha_val = float(alpha_arr[idx])
-
-            # индекс по V_y, ближайший к 0
-            ind_y0 = int(np.argmin(np.abs(V_y)))
-            line = RES_spatial[ind_y0, :]
-            intensity = np.abs(line) ** 2
-
-            # Нормированная координата (по x' == V_x)
-            x_norm = S_gl * V_x / (wl_gl * f_gl)
-
-            # Запомним полный диапазон x_norm, чтобы при xy_display<=0
-            # можно было аккуратно выставить xlim
-            cur_min = float(np.min(x_norm))
-            cur_max = float(np.max(x_norm))
-            x_norm_global_min = cur_min if x_norm_global_min is None else min(x_norm_global_min, cur_min)
-            x_norm_global_max = cur_max if x_norm_global_max is None else max(x_norm_global_max, cur_max)
-
-            # Ограничение по xy_display, если он > 0
-            if xy_display > 0:
-                mask = np.abs(x_norm) <= xy_display
+            # нормировка на максимум
+            Z_line = np.asarray(Z_line, dtype=float)
+            m = np.max(np.abs(Z_line))
+            if m > 0:
+                Z_line = Z_line / m
             else:
-                mask = np.ones_like(x_norm, dtype=bool)
-
-            x_plot = x_norm[mask]
-            y_val = intensity[mask]
-            if y_val.size == 0:
-                continue
-
-            max_y = np.max(y_val)
-            y_norm = np.zeros_like(y_val) if max_y == 0 else y_val / max_y
-
-            # Полоса: [idx, idx+1]; низ полосы = idx
-            y_bottom = float(idx)
-            y_top = float(idx + 0.9)
-            y_line = y_bottom + y_norm * (y_top - y_bottom)
+                Z_line = np.zeros_like(Z_line)
+            return x_vals, Z_line
 
 
 
-            x_phys = x_plot * wl_gl * f_gl / S_gl  # из x_norm → x
-            gauss_in = (np.exp(-(x_phys**2 / s**2))) ** 2
-            gauss_norm = gauss_in / np.max(gauss_in)
-            y_gauss = y_bottom + gauss_norm * (y_top - y_bottom)
 
-            ax.plot(x_plot, y_line, 'k', lw=0.5)
-            ax.plot(x_plot, np.ones_like(x_plot) * y_bottom, 'k--', lw=0.5)
-            ax.plot(x_plot, y_gauss, 'k--', lw=0.5)
+        for ax, state in zip(axes, states):
+            x_norm_global_min = None
+            x_norm_global_max = None
+
+            for idx, s in enumerate(s_arr):
+                RES_spatial, V_x, V_y = conv_corr(
+                    N=N,
+                    width=width,
+                    field_fun=lambda X, Y, s_local=s: gauss2d(X, Y, s=s_local, phi=np.pi / 2),
+                    field_kwargs={},
+                    filt_fun=Transfer_function,
+                    filt_kwargs={
+                        "mode": mode,
+                        "state": state,
+                        "S": S_gl,
+                        "Npix": Npix,
+                    },
+                    f_gl=f_gl,
+                    wl_gl=wl_gl,
+                )
+
+                alpha_val = float(alpha_arr[idx])
+
+                # индекс по V_y, ближайший к 0
+                ind_y0 = int(np.argmin(np.abs(V_y)))
+                line = RES_spatial[ind_y0, :]
+                intensity = np.abs(line) ** 2
+
+                # Нормированная координата (по x' == V_x)
+                x_norm = S_gl * V_x / (wl_gl * f_gl)
+
+                # Запомним полный диапазон x_norm, чтобы при xy_display<=0
+                # можно было аккуратно выставить xlim
+                cur_min = float(np.min(x_norm))
+                cur_max = float(np.max(x_norm))
+                x_norm_global_min = cur_min if x_norm_global_min is None else min(x_norm_global_min, cur_min)
+                x_norm_global_max = cur_max if x_norm_global_max is None else max(x_norm_global_max, cur_max)
+
+                # Ограничение по xy_display, если он > 0
+                if xy_display > 0:
+                    mask = np.abs(x_norm) <= xy_display
+                else:
+                    mask = np.ones_like(x_norm, dtype=bool)
+
+                x_plot = x_norm[mask]
+                y_val = intensity[mask]
+                if y_val.size == 0:
+                    continue
+
+                max_y = np.max(y_val)
+                y_norm = np.zeros_like(y_val) if max_y == 0 else y_val / max_y
+
+                # Полоса: [idx, idx+1]; низ полосы = idx
+                y_bottom = float(idx)
+                y_top = float(idx + 0.9)
+                y_line = y_bottom + y_norm * (y_top - y_bottom)
 
 
 
-            key = (alpha_val, state)
-            # ищем ближайший ключ к alpha_val
-            if exp_files:
-                # ищем подходящий ключ по alpha и state
-                candidates = [
-                    (a, st, path)
-                    for (a, st), path in exp_files.items()
-                    if st == state and np.isclose(a, alpha_val, atol=1e-3)
-                ]
-                if candidates:
-                    _, _, fname = candidates[0]
-                    fname = Path(fname)
-                    Z_data = load_txt_table_utf16(fname)
-                    N_dots = Z_data.shape[0]
-                    x_width = width
-                    y_width = width
-                    x_vals_exp, Z_line_exp = zemax_to_line(
-                        x_or_y=1,
-                        val_cross=0.0,
-                        N_dots=N_dots,
-                        N_fin=N_dots // 2,
-                        x_width=x_width,
-                        y_width=y_width,
-                        Z_data=Z_data,
-                    )
-                    x_vals_exp_m = np.asarray(x_vals_exp, dtype=float)
-                    x_norm_exp = S_gl * x_vals_exp_m / (wl_gl * f_gl)
-                    if xy_display > 0:
-                        mask_exp = np.abs(x_norm_exp) <= xy_display
-                    else:
-                        mask_exp = np.ones_like(x_norm_exp, dtype=bool)
-                    x_plot_exp = x_norm_exp[mask_exp]
-                    y_exp = np.asarray(Z_line_exp[mask_exp], dtype=float)
-                    if y_exp.size > 0:
-                        m_exp = np.max(np.abs(y_exp))
-                        y_exp_norm = y_exp / m_exp if m_exp > 0 else np.zeros_like(y_exp)
-                        y_exp_line = y_bottom + y_exp_norm * (y_top - y_bottom)
-                        ax.plot(x_plot_exp, y_exp_line, color="tab:red", lw=0.8)
+                x_phys = x_plot * wl_gl * f_gl / S_gl  # из x_norm → x
+                gauss_in = (np.exp(-(x_phys**2 / s**2))) ** 2
+                gauss_norm = gauss_in / np.max(gauss_in)
+                y_gauss = y_bottom + gauss_norm * (y_top - y_bottom)
+
+                ax.plot(x_plot, y_line, 'k', lw=0.5)
+                ax.plot(x_plot, np.ones_like(x_plot) * y_bottom, 'k--', lw=0.5)
+                ax.plot(x_plot, y_gauss, 'k--', lw=0.5)
 
 
-        # Настройка xlim
-        if xy_display > 0:
-            ax.set_xlim(-xy_display, xy_display)
-        else:
-            # если xy_display<=0, используем фактический диапазон
-            if x_norm_global_min is not None and x_norm_global_max is not None:
-                ax.set_xlim(x_norm_global_min, x_norm_global_max)
 
-        # Настройка ylim
-        ax.set_ylim(0.0, float(n_slices)*1.0)
+                key = (alpha_val, state)
+                # ищем ближайший ключ к alpha_val
+                if exp_files:
+                    # ищем подходящий ключ по alpha и state
+                    candidates = [
+                        (a, st, path)
+                        for (a, st), path in exp_files.items()
+                        if st == state and np.isclose(a, alpha_val, atol=1e-3)
+                    ]
+                    if candidates:
+                        _, _, fname = candidates[0]
+                        fname = Path(fname)
+                        Z_data = load_txt_table_utf16(fname)
+                        N_dots = Z_data.shape[0]
+                        x_width = width
+                        y_width = width
+                        x_vals_exp, Z_line_exp = zemax_to_line(
+                            x_or_y=1,
+                            val_cross=0.0,
+                            N_dots=N_dots,
+                            N_fin=N_dots // 2,
+                            x_width=x_width,
+                            y_width=y_width,
+                            Z_data=Z_data,
+                        )
+                        x_vals_exp_m = np.asarray(x_vals_exp, dtype=float)
+                        x_norm_exp = S_gl * x_vals_exp_m / (wl_gl * f_gl)
+                        if xy_display > 0:
+                            mask_exp = np.abs(x_norm_exp) <= xy_display
+                        else:
+                            mask_exp = np.ones_like(x_norm_exp, dtype=bool)
+                        x_plot_exp = x_norm_exp[mask_exp]
+                        y_exp = np.asarray(Z_line_exp[mask_exp], dtype=float)
+                        if y_exp.size > 0:
+                            m_exp = np.max(np.abs(y_exp))
+                            y_exp_norm = y_exp / m_exp if m_exp > 0 else np.zeros_like(y_exp)
+                            y_exp_line = y_bottom + y_exp_norm * (y_top - y_bottom)
+                            ax.plot(x_plot_exp, y_exp_line, color="tab:red", lw=0.8)
 
-        # Левая ось Y — α
-        y_ticks = [float(i) for i in range(n_slices)]
-        alpha_labels = [f"{a_val:.1f}" for a_val in alpha_arr]
-        ax.set_yticks(y_ticks)
-        ax.set_yticklabels(alpha_labels)
-        ax.set_ylabel(r"$\alpha$")
-        # Правая ось Y — s
-        ax_right = ax.twinx()
-        ax_right.set_ylim(ax.get_ylim())
-        ax_right.set_yticks(y_ticks)
-        s_labels = [f"{s_val*1e3:.2f} mm" for s_val in s_arr]  # s в мм
-        ax_right.set_yticklabels(s_labels)
-        ax_right.set_ylabel("w (мм)")
-        ax.set_xlabel(r"$\dfrac{S x}{\lambda f}$")
-        #ax.set_title(f"state = {state!r}, mode = {mode!r}")
 
-    fig.suptitle(
-        f"$\\lambda = {wl_gl*1e9:.0f}$ nm, "
-        f"$f = {f_gl*1e3:.0f}$ mm, "
-        f"$S = {S_gl*1e6:.0f}$ $\\mu m$ " "\n"
-        r"$\alpha = \dfrac{2w_0}{S} = \dfrac{8 f \lambda}{\pi S w}$"
-    )
-    fig.tight_layout()
-    return fig
+            # Настройка xlim
+            if xy_display > 0:
+                ax.set_xlim(-xy_display, xy_display)
+            else:
+                # если xy_display<=0, используем фактический диапазон
+                if x_norm_global_min is not None and x_norm_global_max is not None:
+                    ax.set_xlim(x_norm_global_min, x_norm_global_max)
+
+            # Настройка ylim
+            ax.set_ylim(0.0, float(n_slices)*1.0)
+
+            # Левая ось Y — α
+            y_ticks = [float(i) for i in range(n_slices)]
+            alpha_labels = [f"{a_val:.1f}" for a_val in alpha_arr]
+            ax.set_yticks(y_ticks)
+            ax.set_yticklabels(alpha_labels)
+            ax.set_ylabel(r"$\alpha$")
+            # Правая ось Y — s
+            ax_right = ax.twinx()
+            ax_right.set_ylim(ax.get_ylim())
+            ax_right.set_yticks(y_ticks)
+            s_labels = [f"{s_val*1e3:.2f} mm" for s_val in s_arr]  # s в мм
+            ax_right.set_yticklabels(s_labels)
+            ax_right.set_ylabel("w (мм)")
+            ax.set_xlabel(r"$\dfrac{D x}{\lambda f}$")
+            #ax.set_title(f"state = {state!r}, mode = {mode!r}")
+
+        fig.suptitle(
+            f"$\\lambda = {wl_gl*1e9:.0f}$ nm, "
+            f"$f = {f_gl*1e3:.0f}$ mm, "
+            f"$D = {S_gl*1e6:.0f}$ $\\mu m$ " "\n"
+            r"$\alpha = \dfrac{2w_0}{D} = \dfrac{8 f \lambda}{\pi D w}$"
+        )
+        fig.tight_layout()
+        return fig
 
