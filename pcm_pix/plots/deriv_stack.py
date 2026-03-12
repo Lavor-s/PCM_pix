@@ -109,11 +109,13 @@ def Transfer_function(u: float, v: float, mode: str, state: str, S: float, Npix:
 
         case "theory":
             amp, phase = amp_phase_from_g(u, state=state, D=S)
+            
             H = amp * np.exp(1j * phase)
             return np.where(mask, H, 0.0 + 0.0j)
 
         case "ideal_pixel":
             amp, phase = T_phi_pix(u, v, state=state, D=S, Npix=Npix, f_step=f_step)
+            amp = amp**2
             H = amp * np.exp(1j * phase)
             return np.where(mask, H, 0.0 + 0.0j)
 
@@ -680,4 +682,143 @@ def plot_output_slices_1x2(
         )
         fig.tight_layout()
         return fig
+
+
+
+
+@dataclass(frozen=True)
+class DerivStackLayers:
+    show_profiles: bool = True
+    show_theory: bool = True
+    show_extrema_lines: bool = True
+    show_extrema_points: bool = True
+    show_level_guides: bool = True
+    show_neon_experiment: bool = True
+    show_suptitle: bool = True
+
+
+
+def plot_deriv_stack_1x2_from_data(
+    data: DerivStackData,
+    *,
+    cfg: dict[str, Any] | None = None,
+    out_path: str | Path | None = None,
+    layers: DerivStackLayers | None = None,
+    figsize: tuple[float, float] = (6.0, 4.0),
+    dpi: int | None = None,
+) -> plt.Figure:
+    """
+    Лёгкая часть: отрисовка из заранее посчитанного DerivStackData.
+    cfg здесь нужен только для подписей/стиля (wl_gl/f_gl/S_gl и т.п.), но по умолчанию
+    мы берём их из data.cfg_meta.
+    """
+    layers = layers or DerivStackLayers()
+
+    cfg = cfg or {}
+    wl_gl = float(cfg.get("wl_gl", data.cfg_meta["wl_gl"]))
+    f_gl = float(cfg.get("f_gl", data.cfg_meta["f_gl"]))
+    S_gl = float(cfg.get("S_gl", data.cfg_meta["S_gl"]))
+
+    dy = float(cfg.get("plots_deriv_stack_dy", data.cfg_meta["dy"]))
+    lw = float(cfg.get("plots_deriv_stack_lw", 0.5))
+    lw2 = float(cfg.get("plots_deriv_stack_lw2", lw / 2))
+
+    alpha = np.array(cfg.get("alpha", data.alpha), dtype=float)
+    s_list = data.s_list
+    items = data.items
+    m = data.metrics
+
+    fig, ax = plt.subplots(1, 2, figsize=figsize, dpi=dpi)
+
+    if layers.show_profiles or layers.show_theory or layers.show_extrema_lines or layers.show_extrema_points:
+        for it in items:
+            j, i = it.panel_j, it.level_i
+            if layers.show_profiles:
+                ax[j].plot(it.X_cut, it.Z_cut + dy * i, lw=lw)
+
+            if layers.show_theory:
+                X_g = np.linspace(-10, 10, 500)
+                Z_g = np.array([H_func_gauss(float(k), 0.0, s=float(s_list[i])) for k in X_g], dtype=float)
+                Z_g = Z_g / np.amax(Z_g) + dy * i
+                ax[j].plot(X_g * 1e-3 * S_gl / wl_gl / f_gl, Z_g, "k--", lw=lw2, alpha=1)
+
+            if layers.show_extrema_lines:
+                ax[j].plot([m.MAX_1st_x_pos_th[i], m.MAX_1st_x_pos_th[i]], [dy * i, dy * (i + 1)], "k--", lw=lw2, alpha=1)
+                ax[j].plot([m.MAX_1st_x_neg_th[i], m.MAX_1st_x_neg_th[i]], [dy * i, dy * (i + 1)], "k--", lw=lw2, alpha=1)
+                ax[j].plot([m.MAX_2nd_x_pos_th[i], m.MAX_2nd_x_pos_th[i]], [dy * i, dy * (i + 1)], "b--", lw=lw2, alpha=1)
+                ax[j].plot([m.MAX_2nd_x_neg_th[i], m.MAX_2nd_x_neg_th[i]], [dy * i, dy * (i + 1)], "b--", lw=lw2, alpha=1)
+
+            if layers.show_extrema_points:
+                if j == 1:
+                    sc_color = "r" if float(m.d1p[i]) > 0.1 else "k"
+                    ax[j].scatter(m.MAX_1st_x_pos_sim[i], it.Z_cut[np.where(it.X_cut == m.MAX_1st_x_pos_sim[i])[0].item()] + dy * i, s=1, color=sc_color)
+                    sc_color = "r" if float(m.d1n[i]) > 0.1 else "k"
+                    ax[j].scatter(m.MAX_1st_x_neg_sim[i], it.Z_cut[np.where(it.X_cut == m.MAX_1st_x_neg_sim[i])[0].item()] + dy * i, s=1, color=sc_color)
+                else:
+                    sc_color = "r" if float(m.d3p[i]) > 0.1 else "k"
+                    ax[j].scatter(m.MAX_2nd_x_pos_sim[i], it.Z_cut[np.where(it.X_cut == m.MAX_2nd_x_pos_sim[i])[0].item()] + dy * i, s=1, color=sc_color)
+                    sc_color = "r" if float(m.d3n[i]) > 0.1 else "k"
+                    ax[j].scatter(m.MAX_2nd_x_neg_sim[i], it.Z_cut[np.where(it.X_cut == m.MAX_2nd_x_neg_sim[i])[0].item()] + dy * i, s=1, color=sc_color)
+
+    if layers.show_level_guides:
+        for i in range(len(s_list)):
+            ax[0].plot([-100, 100], [dy * i, dy * i], "k--", lw=lw2, alpha=0.3)
+            ax[1].plot([-100, 100], [dy * i, dy * i], "k--", lw=lw2, alpha=0.3)
+        ax[0].plot([0, 0], [0, dy * (len(s_list) + 1)], "k--", lw=lw2, alpha=0.3)
+
+    if layers.show_neon_experiment and data.neon is not None:
+        neon_plot(data.neon.x_am, data.neon.z_am, ax=ax[0], color="red")
+        neon_plot(data.neon.x_cr, data.neon.z_cr, ax=ax[1], color="red")
+
+    ax[0].set(title="Amorphous", ylabel=r"$\alpha = \dfrac{2w_0}{L_{meta}}$", xlim=[-5, 5], xlabel=r"$\dfrac{S}{\lambda f}\cdot x$")
+    ax[1].set(title="Crystal", ylabel="", xlim=[-5, 5], xlabel=r"$\dfrac{S}{\lambda f}\cdot x$")
+    ax[0].set(ylim=[-dy, (len(s_list) + 2) * dy], yticks=np.linspace(0, (len(s_list) - 1) * dy, len(s_list)), yticklabels=np.round(alpha, 2))
+    ax[1].set(ylim=[-dy, (len(s_list) + 2) * dy], yticks=np.linspace(0, (len(s_list) - 1) * dy, len(s_list)), yticklabels=np.round(alpha, 2))
+
+    if layers.show_suptitle:
+        sup1 = r"$\lambda = $" + str(round(wl_gl * 1e9)) + " nm, f = " + str(round(float(cfg.get("f_gl", data.cfg_meta["f_gl"])) * 1e3)) + " mm, S = " + str(round(S_gl * 1e6)) + r"$\mu m$" + "\n"
+        alpha_opt = float(cfg.get("plots_deriv_stack_alpha_opt", 0.5))
+        HWHM = 2 * float(cfg.get("f_gl", data.cfg_meta["f_gl"])) * wl_gl / np.pi / (alpha_opt * 1e-3) / S_gl
+        sup2 = r"Optimim: $\alpha=0.5$, HWHM = " + str(round(HWHM, 2)) + "mm"
+        fig.suptitle(sup1 + sup2)
+
+    plt.tight_layout(pad=2)
+
+    if out_path is not None:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path)
+
+    return fig
+
+
+def plot_deriv_stack_1x2(
+    *,
+    cfg: dict[str, Any],
+    out_path: str | Path | None = None,
+    layers: DerivStackLayers | None = None,
+    figsize: tuple[float, float] = (6.0, 4.0),
+    dpi: int | None = None,
+) -> plt.Figure:
+    """
+    Итоговый перенос графика (ячейка 179 + экспериментальное наложение).
+
+    Входы берём из CFG:
+    - wl_gl/f_gl/L_gl/S_gl
+    - alpha (или alpha_list)
+    - conv_N
+    - gauss_am_path / gauss_cr_path (для neon overlay)
+    """
+    layers = layers or DerivStackLayers()
+    data = compute_deriv_stack_data(cfg, layers=layers)
+    return plot_deriv_stack_1x2_from_data(
+        data,
+        cfg=cfg,
+        out_path=out_path,
+        layers=layers,
+        figsize=figsize,
+        dpi=dpi,
+    )
+
+
 

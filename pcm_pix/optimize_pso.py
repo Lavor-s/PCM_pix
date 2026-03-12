@@ -31,9 +31,11 @@ class PSOResult:
 def make_targets(Nn: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     # 1-в-1 как у тебя в ноутбуке (ам/кр варианты)
     R_th_0 = np.abs(np.linspace(-1, 1, Nn)) ** 2
+    R_th_0 = R_th_0 **2
     phi_R_th_0 = np.linspace(-1, 1, Nn) * 0
 
     R_th_1 = np.abs(np.linspace(-1, 1, Nn))
+    R_th_1 = R_th_1 **2
     phi_R_th_1 = np.pi / 2 * np.sign(np.linspace(-1, 1, Nn))
     return R_th_0, phi_R_th_0, R_th_1, phi_R_th_1
 
@@ -54,8 +56,8 @@ def f_vec(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
     z = X[:, -4].reshape(-1, 1)
     z_pump = X[:, -3].reshape(-1, 1)
     # sc_1/sc_2 пока просто читаем (как в ноутбуке), но не используем
-    # sc_1 = X[:, -2].reshape(-1, 1)
-    # sc_2 = X[:, -1].reshape(-1, 1)
+    sc_1 = X[:, -2].reshape(-1, 1)
+    sc_2 = X[:, -1].reshape(-1, 1)
 
     a_flat, d_flat, b_flat = a.flatten(), d.flatten(), b.flatten()
 
@@ -67,10 +69,10 @@ def f_vec(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
     R_th_1 = np.full((X.shape[0], Nn), R_th_1)
     phi_R_th_1 = np.full((X.shape[0], Nn), phi_R_th_1)
 
-    RCa = R_th_0 * np.cos(phi_R_th_0 + z)
-    RSa = R_th_0 * np.sin(phi_R_th_0 + z)
-    RCc = R_th_1 * np.cos(phi_R_th_1 + z_pump)
-    RSc = R_th_1 * np.sin(phi_R_th_1 + z_pump)
+    RCa = sc_1 * R_th_0 * np.cos(phi_R_th_0 + z)
+    RSa = sc_1 * R_th_0 * np.sin(phi_R_th_0 + z)
+    RCc = sc_2 * R_th_1 * np.cos(phi_R_th_1 + z_pump)
+    RSc = sc_2 * R_th_1 * np.sin(phi_R_th_1 + z_pump)
 
     d1 = (pred_0[:, :, 0] - RCa) ** 2
     d2 = (pred_0[:, :, 1] - RSa) ** 2
