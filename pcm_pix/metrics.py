@@ -11,19 +11,11 @@ from typing import Any
 
 import numpy as np
 
-
-def wrap_to_pi(x: np.ndarray) -> np.ndarray:
-    """Нормализует (wrap) массив углов в диапазон [-π, π]."""
-    return (x + np.pi) % (2 * np.pi) - np.pi
-
-
 def evaluate_surrogate(
     ds_df,
     sur,
     n: int | None = 5000,
-    seed: int = 42,
     label: str = "am",
-    return_pred: bool = False,
 ) -> dict[str, Any]:
     """
     Оценивает качество суррогата на подвыборке `ds.data_0` / `ds.data_1`.
@@ -40,7 +32,7 @@ def evaluate_surrogate(
     - фазы: `atan2(sin, cos)`; ошибка фазы считается как wrap в [-π, π], чтобы
       не было ложных больших ошибок на границе 2π.
     """
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng()
 
     if n is None or n >= len(ds_df):
         idx = np.arange(len(ds_df))
@@ -96,9 +88,11 @@ def evaluate_surrogate(
         "T_out_of_01": T_out_of_01,
     }
 
-    if return_pred:
-        out["pred"] = pred
-        out["idx"] = idx
-
     return out
 
+
+
+
+def wrap_to_pi(x: np.ndarray) -> np.ndarray:
+    """Нормализует (wrap) массив углов в диапазон [-π, π]."""
+    return (x + np.pi) % (2 * np.pi) - np.pi
