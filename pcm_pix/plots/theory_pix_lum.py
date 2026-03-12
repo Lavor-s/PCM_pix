@@ -196,6 +196,9 @@ def plot_theory_pix_lum_overlay_2x2(
     pred = _pos_to_pred_lum(pos, sur0, sur1, cfg)
     T_lum = pred["R_0"]
     T_p_lum = pred["R_1"]
+    T_lum = T_lum**0.5 * c1
+    T_p_lum = T_p_lum**0.5 * c2
+
     phi_lum = pred["phi_R_0"]
     phi_p_lum = pred["phi_R_1"]
 

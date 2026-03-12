@@ -381,6 +381,7 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
     init_mode = cfg.get("de_init_mode", "init_ar")  # "init_ar" | "x0"
     init_N = int(cfg.get("de_init_N", 1000))
     init_seed = cfg.get("de_init_seed", None)
+    print("111")
 
     if init_mode == "init_ar":
         init = make_init_ar_from_pos(pos, N=init_N, seed=init_seed)
