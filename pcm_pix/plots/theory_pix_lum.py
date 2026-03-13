@@ -196,8 +196,8 @@ def plot_theory_pix_lum_overlay_2x2(
     pred = _pos_to_pred_lum(pos, sur0, sur1, cfg)
     T_lum = pred["R_0"]
     T_p_lum = pred["R_1"]
-    T_lum = T_lum**0.5 * c1
-    T_p_lum = T_p_lum**0.5 * c2
+    T_lum = T_lum**0.5
+    T_p_lum = T_p_lum**0.5# * c2
 
     phi_lum = pred["phi_R_0"]
     phi_p_lum = pred["phi_R_1"]
@@ -206,9 +206,9 @@ def plot_theory_pix_lum_overlay_2x2(
 
     # (a) Reflection
     if layers.show_theory:
-        axs[0, 0].plot(x * 1e6, amp_phase_from_g(x, state = "am", D = D)[0] * 1.1, "b-", linewidth=0.9, markersize=2)
+        axs[0, 0].plot(x * 1e6, amp_phase_from_g(x, state = "am", D = D)[0] * c1, "b-", linewidth=0.9, markersize=2)
     if layers.show_pix:
-        axs[0, 0].plot(x * 1e6, T_phi_pix(x, x, state="am", D=D, Npix=Nn, f_step = f_step)[0] * 0.95, "r-", linewidth=0.5, markersize=2)
+        axs[0, 0].plot(x * 1e6, T_phi_pix(x, x, state="am", D=D, Npix=Nn, f_step = f_step)[0] * c1, "r-", linewidth=0.5, markersize=2)
     ax2_00 = axs[0, 0].twiny()
     axs[0, 0].set(
         title="",
@@ -222,9 +222,9 @@ def plot_theory_pix_lum_overlay_2x2(
 
     # (c) Reflection (pump)
     if layers.show_theory:
-        axs[1, 0].plot(x * 1e6, amp_phase_from_g(x, state = "cr", D = D)[0] * 0.9, "b-", linewidth=0.9, markersize=2)
+        axs[1, 0].plot(x * 1e6, amp_phase_from_g(x, state = "cr", D = D)[0] * c2, "b-", linewidth=0.9, markersize=2)
     if layers.show_pix:
-        axs[1, 0].plot(x * 1e6,  T_phi_pix(x, x, state="cr", D=D, Npix=Nn, f_step = f_step)[0] * 0.85, "r-", linewidth=0.5, markersize=2)
+        axs[1, 0].plot(x * 1e6,  T_phi_pix(x, x, state="cr", D=D, Npix=Nn, f_step = f_step)[0] * c2, "r-", linewidth=0.5, markersize=2)
     ax2_10 = axs[1, 0].twiny()
     axs[1, 0].set(
         title="",
@@ -281,23 +281,34 @@ def plot_theory_pix_lum_overlay_2x2(
     pixel_x = np.linspace(1, 11, 11)
 
     if layers.show_lum_ann:
-        phi_lum_plot = np.array(phi_lum, dtype=float) - float(phi_lum[0])
-        phi_p_lum_plot = np.array(phi_p_lum, dtype=float) - float(phi_p_lum[0]) + np.pi / 2
+        #phi_lum_plot = np.array(phi_lum, dtype=float) - float(phi_lum[0])
+        #phi_p_lum_plot = np.array(phi_p_lum, dtype=float) - float(phi_p_lum[0]) + np.pi / 2
+       
+        phi_lum_plot = align_phase_to_target(phi_lum, target=0)
+        phi_p_lum_plot = align_phase_to_target(phi_p_lum, target=np.pi / 2)
+ 
         ax2_00.plot(pixel_x, T_lum, "1r", markersize=5, mec="k")
         ax2_01.plot(pixel_x, phi_lum_plot, "1r", markersize=5, mec="k")
         ax2_10.plot(pixel_x, T_p_lum, "1r", markersize=5, mec="k")
         ax2_11.plot(pixel_x, phi_p_lum_plot, "1r", markersize=5, mec="k")
 
     if layers.show_lum_exp:
+        phi_lum_am_2_plot = align_phase_to_target(phi_lum, target=0)
+        phi_lum_cr_2_plot = align_phase_to_target(phi_p_lum, target=np.pi / 2)
+ 
         ax2_00.plot(pixel_x, R_lum_am_2, "2r", markersize=5)
-        ax2_01.plot(pixel_x, phi_lum_am_2 - phi_lum_am_2[0], "2r", markersize=5)
+        ax2_01.plot(pixel_x, phi_lum_am_2_plot, "2r", markersize=5)
         ax2_10.plot(pixel_x, R_lum_cr_2, "2r", markersize=5)
-        ax2_11.plot(pixel_x, phi_lum_cr_2 - phi_lum_cr_2[0] + np.pi / 2, "2r", markersize=5)
+        ax2_11.plot(pixel_x, phi_lum_cr_2_plot, "2r", markersize=5)
+    
     if layers.show_lum_cones:
+        phi_lum_am_3_plot = align_phase_to_target(phi_lum, target=0)
+        phi_lum_cr_3_plot = align_phase_to_target(phi_p_lum, target=np.pi / 2)
+ 
         ax2_00.plot(pixel_x, R_lum_am_3, "3g", markersize=5)
-        ax2_01.plot(pixel_x, phi_lum_am_3 - phi_lum_am_3[0], "3g", markersize=5)
+        ax2_01.plot(pixel_x, phi_lum_am_3_plot, "3g", markersize=5)
         ax2_10.plot(pixel_x, R_lum_cr_3, "3g", markersize=5)
-        ax2_11.plot(pixel_x, phi_lum_cr_3 - phi_lum_cr_3[0] + np.pi / 2, "3g", markersize=5)
+        ax2_11.plot(pixel_x, phi_lum_cr_3_plot, "3g", markersize=5)
 
     if layers.show_grid:
         for ax in axs.ravel():
@@ -312,3 +323,10 @@ def plot_theory_pix_lum_overlay_2x2(
 
     return fig
 
+def align_phase_to_target(phi, target=0):
+    """
+    Сдвигает фазу так, чтобы первая точка равнялась target, затем приводит все значения в [-π, π].
+    """
+    out = np.asarray(phi, dtype=float) - float(phi[0]) + target
+    out = (out + np.pi) % (2 * np.pi) - np.pi
+    return out
