@@ -81,7 +81,7 @@ def run_pso_hyperopt(
     from itertools import product
 
     # import here to avoid circular import at module load time
-    from .optimize_pso import run_pso_until
+    from .optimize import run_pso_until
 
     rng = np.random.default_rng(int(cfg.get("hyperopt_seed", 42)))
 
@@ -260,7 +260,7 @@ def run_de_hyperopt(
     from scipy.optimize import Bounds, differential_evolution
 
     # Чтобы цель совпадала 1-в-1 с основным пайплайном, используем те же помощники.
-    from .optimize_pso import _make_bounds_arrays, f_de
+    from .optimize import _make_bounds_arrays, f_de
 
     rng = np.random.default_rng(int(cfg.get("hyperopt_de_seed", 42)))
 
