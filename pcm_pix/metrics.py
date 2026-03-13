@@ -8,7 +8,7 @@ metrics.py — оценка качества суррогатных моделе
 """
 
 from typing import Any
-
+from pcm_pix.solution import Solution
 import numpy as np
 
 def evaluate_surrogate(
@@ -48,12 +48,7 @@ def evaluate_surrogate(
     phiT_true = df["phi_T1"].to_numpy()
 
     pred = sur.predict(df["a"].to_list(), df["d"].to_list(), df["b"].to_list())
-    Rcos_p, Rsin_p, Tcos_p, Tsin_p = pred[:, 0], pred[:, 1], pred[:, 2], pred[:, 3]
-
-    R_pred = np.sqrt(Rcos_p**2 + Rsin_p**2)
-    T_pred = np.sqrt(Tcos_p**2 + Tsin_p**2)
-    phiR_pred = np.arctan2(Rsin_p, Rcos_p)
-    phiT_pred = np.arctan2(Tsin_p, Tcos_p)
+    R_pred, T_pred, phiR_pred, phiT_pred = Solution.pred_to_rtphi(pred)
 
     # amplitude errors
     R_mae = float(np.mean(np.abs(R_pred - R_true)))
@@ -62,8 +57,8 @@ def evaluate_surrogate(
     T_rmse = float(np.sqrt(np.mean((T_pred - T_true) ** 2)))
 
     # phase errors, wrapped
-    dphiR = wrap_to_pi(phiR_pred - phiR_true)
-    dphiT = wrap_to_pi(phiT_pred - phiT_true)
+    dphiR = Solution.wrap_to_pi(phiR_pred - phiR_true)
+    dphiT = Solution.wrap_to_pi(phiT_pred - phiT_true)
     phiR_mae = float(np.mean(np.abs(dphiR)))
     phiR_rmse = float(np.sqrt(np.mean(dphiR**2)))
     phiT_mae = float(np.mean(np.abs(dphiT)))
@@ -91,8 +86,3 @@ def evaluate_surrogate(
     return out
 
 
-
-
-def wrap_to_pi(x: np.ndarray) -> np.ndarray:
-    """Нормализует (wrap) массив углов в диапазон [-π, π]."""
-    return (x + np.pi) % (2 * np.pi) - np.pi

@@ -92,43 +92,29 @@ class Solution:
         """Построение Solution из pos + sur0/sur1 + CFG"""
 
         wl = float(cfg.get("wl", 1.55e-6))
-        Nn = int(cfg.get("Nn", 11))
-        b_min = float(cfg.get("b_min_m", 50e-9))
-
-
-        pos = np.array(pos, dtype=float).ravel()
+        pos = np.asarray(pos, dtype=float).ravel()
         pos = cls._ensure_meters(pos, wl)
 
-        a, d, b = cls.split_to_adb(pos, Nn, b_min)
-        
-        pred_0 = sur0.predict(a, d, b).reshape(Nn, 4)
-        pred_1 = sur1.predict(a, d, b).reshape(Nn, 4)
-
-        R_0, T_0, phi_R_0, phi_T_0 = Solution.cos_sin_to_rtphi(
-            pred_0[:, 0], pred_0[:, 1], pred_0[:, 2], pred_0[:, 3]
+        fields = cls.predict_fields_from_pos(
+            pos,
+            cfg=cfg,
+            sur0=sur0,
+            sur1=sur1,
         )
-        R_1, T_1, phi_R_1, phi_T_1 = Solution.cos_sin_to_rtphi(
-            pred_1[:, 0], pred_1[:, 1], pred_1[:, 2], pred_1[:, 3]
-        )
-
-        reflection = {"am": R_0, "cr": R_1}
-        transmission = {"am": T_0, "cr": T_1}
-        phase_R = {"am": phi_R_0, "cr": phi_R_1}
-        phase_T = {"am": phi_T_0, "cr": phi_T_1}
 
         cost_val = float(f_vec(pos.reshape(1, -1), sur0, sur1, cfg)[0])
-
 
         return cls(
             name=name,
             pos=pos,
             cost=cost_val,
-            reflection=reflection,
-            transmission=transmission,
-            phase_shift_reflection=phase_R,
-            phase_shift_transmission=phase_T,
+            reflection=fields["reflection"],
+            transmission=fields["transmission"],
+            phase_shift_reflection=fields["phase_shift_reflection"],
+            phase_shift_transmission=fields["phase_shift_transmission"],
             meta=meta or {},
         )
+
 
     @staticmethod
     def _ensure_meters(x: np.ndarray, wl: float, factor: float = 5.0) -> np.ndarray:
@@ -144,7 +130,9 @@ class Solution:
         s = float(np.nanmedian(np.abs(x)))
         if s >= factor * wl:
             # значения выглядят как nm, интерпретированные как "метры" -> переводим
+            x[-4:] = x[-4:] * 1e9
             return x * 1e-9
+
         return x
 
     @staticmethod
@@ -216,9 +204,7 @@ class Solution:
         out_dir = run.results / "solutions"
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        payload = self.to_json_payload()
-        path = out_dir / f"{name}.json"
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        path = self.save_json(out_dir / f"{name}.json")
         run.logger.info("saved solution %s", path.name)
         return path
 
@@ -230,8 +216,64 @@ class Solution:
         return cls.from_json(path)
 
 
+    @staticmethod
+    def pred_to_rtphi(pred: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        pred = np.asarray(pred, dtype=float)
+        if pred.ndim != 2 or pred.shape[1] != 4:
+            raise ValueError(f"Expected pred with shape (n, 4), got {pred.shape}")
+        return Solution.cos_sin_to_rtphi(
+            pred[:, 0],
+            pred[:, 1],
+            pred[:, 2],
+            pred[:, 3],
+        )
+
+    @staticmethod
+    def predict_rtphi(sur, a, d, b) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        pred = sur.predict(a, d, b)
+        return Solution.pred_to_rtphi(pred)
+
+    @staticmethod
+    def wrap_to_pi(x: np.ndarray) -> np.ndarray:
+        x = np.asarray(x, dtype=float)
+        return (x + np.pi) % (2 * np.pi) - np.pi
+    @staticmethod
+    def wrap_to_0_2pi(x: np.ndarray) -> np.ndarray:
+        x = np.asarray(x, dtype=float)
+        return np.mod(x, 2 * np.pi)
+    @staticmethod
+    def align_phase_to_target(phi: np.ndarray, target: float = 0.0) -> np.ndarray:
+        phi = np.asarray(phi, dtype=float)
+        return Solution.wrap_to_pi(phi - float(phi[0]) + target)
 
 
+    @classmethod
+    def predict_fields_from_pos(
+        cls,
+        pos: np.ndarray,
+        *,
+        cfg: dict,
+        sur0,
+        sur1,
+    ) -> dict[str, dict[str, np.ndarray]]:
+        wl = float(cfg.get("wl", 1.55e-6))
+        Nn = int(cfg.get("Nn", 11))
+        b_min = float(cfg.get("b_min_m", 50e-9))
+
+        pos = np.asarray(pos, dtype=float).ravel()
+        pos = cls._ensure_meters(pos, wl)
+
+        a, d, b = cls.split_to_adb(pos, Nn, b_min)
+
+        R_0, T_0, phi_R_0, phi_T_0 = cls.predict_rtphi(sur0, a, d, b)
+        R_1, T_1, phi_R_1, phi_T_1 = cls.predict_rtphi(sur1, a, d, b)
+
+        return {
+            "reflection": {"am": R_0, "cr": R_1},
+            "transmission": {"am": T_0, "cr": T_1},
+            "phase_shift_reflection": {"am": phi_R_0, "cr": phi_R_1},
+            "phase_shift_transmission": {"am": phi_T_0, "cr": phi_T_1},
+        }
 
 
 def save_preset(
@@ -242,7 +284,6 @@ def save_preset(
     sur0,
     sur1,
     preset_dir: str | Path,
-    cost: float | None = None,
     meta: dict | None = None,
 ) -> Solution:
     """
@@ -464,3 +505,4 @@ def f_vec(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
     penalty = constr1 + constr2
 
     return np.sum(d1 + d2 + d3 + d4 + penalty, axis=1)
+

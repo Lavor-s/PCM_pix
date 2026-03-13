@@ -25,6 +25,7 @@ class Run:
     logs: Path
     models: Path
     results: Path
+    plots: Path
     gds: Path
     logger: logging.Logger
 
@@ -68,13 +69,14 @@ def start_run(outputs_dir: str | Path = "outputs", run_name: str | None = None) 
     models = root / "models"
     results = root / "results"
     gds = root / "gds"
+    plots = root / "plots"
 
-    for p in (logs, models, results, gds):
+    for p in (logs, models, results, plots, gds):
         p.mkdir(parents=True, exist_ok=True)
 
     logger = _make_logger(logs / "run.log")
     logger.info("run_dir=%s", root.resolve())
-    return Run(root=root, logs=logs, models=models, results=results, gds=gds, logger=logger)
+    return Run(root=root, logs=logs, models=models, results=results, plots=plots, gds=gds, logger=logger)
 
 
 def append_text(path: Path, text: str) -> None:

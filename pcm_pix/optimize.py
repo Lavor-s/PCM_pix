@@ -14,19 +14,25 @@ optimize.py — целевая функция и оптимизация (PSO / D
 
 from dataclasses import dataclass
 from typing import Dict, Any
-
-import json
-from pathlib import Path
-
 import numpy as np
 import pyswarms as ps
-from pcm_pix.solution import Solution, f_vec
+
+from pcm_pix.run import append_text
+from pcm_pix.solution import f_vec
 
 
 @dataclass(frozen=True)
 class PSOResult:
     cost: float
     pos: np.ndarray
+
+def _write_best_result(run, *, cost: float, pos: np.ndarray, prefix: str = "best") -> None:
+    cost_path = run.results / f"{prefix}_cost.txt"
+    pos_path = run.results / f"{prefix}_pos.txt"
+    cost_path.write_text(str(float(cost)) + "\n", encoding="utf-8")
+    pos_path.write_text(np.array2string(np.asarray(pos, dtype=float), separator=", ") + "\n", encoding="utf-8")
+
+
 
 def run_pso(sur0, sur1, cfg: Dict[str, Any], run, save_artifacts: bool = True) -> PSOResult:
     """
@@ -72,9 +78,7 @@ def run_pso(sur0, sur1, cfg: Dict[str, Any], run, save_artifacts: bool = True) -
     run.logger.info("PSO done: cost=%s", cost)
 
     if save_artifacts:
-        # сохраним результат
-        (run.results / "best_cost.txt").write_text(str(cost) + "\n", encoding="utf-8")
-        (run.results / "best_pos.txt").write_text(np.array2string(pos, separator=", ") + "\n", encoding="utf-8")
+        _write_best_result(run, cost=cost, pos=pos, prefix="best")
 
     return PSOResult(cost=float(cost), pos=np.array(pos))
 
@@ -144,11 +148,7 @@ def run_de(sur0, sur1, cfg: Dict[str, Any], run, x0: np.ndarray | None = None) -
 
     run.logger.info("DE done: cost=%s", cost)
 
-    (run.results / "best_de_cost.txt").write_text(str(cost) + "\n", encoding="utf-8")
-    (run.results / "best_de_pos.txt").write_text(
-        np.array2string(pos, separator=", ") + "\n",
-        encoding="utf-8",
-    )
+    _write_best_result(run, cost=cost, pos=pos, prefix="best_de")
 
     return PSOResult(cost=cost, pos=pos)
 
@@ -161,8 +161,8 @@ def run_hybrid_pso_de(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
     best_de = run_de_full(sur0, sur1, cfg, run, pos=best_pso.pos)
 
     # финально считаем лучшим DE (обычно он улучшает)
-    (run.results / "best_cost.txt").write_text(str(best_de.cost) + "\n", encoding="utf-8")
-    (run.results / "best_pos.txt").write_text(np.array2string(best_de.pos, separator=", ") + "\n", encoding="utf-8")
+    _write_best_result(run, cost=best_de.cost, pos=best_de.pos, prefix="best")
+
     return best_de
 
 
@@ -288,7 +288,6 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
     init_mode = cfg.get("de_init_mode", "init_ar")  # "init_ar" | "x0"
     init_N = int(cfg.get("de_init_N", 1000))
     init_seed = cfg.get("de_init_seed", None)
-    print("111")
 
     if init_mode == "init_ar":
         init = make_init_ar_from_pos(pos, N=init_N, seed=init_seed)
@@ -320,9 +319,7 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
 
             # файл прогресса как аналог старого OUTPUT/NAME
             p = run.results / "de_progress.txt"
-            with p.open("a", encoding="utf-8") as f:
-                f.write(f"{it:4d}  {val: .6f}\n")
-                f.write(s + "\n")
+            append_text(p, f"{it:4d}  {val: .6f}\n{s}\n")
 
             runtime = time.time() - start_time
             run.logger.info("Runtime %.1f min", runtime / 60)
@@ -351,7 +348,7 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
     x = np.array(result.x, dtype=float)
 
     run.logger.info("DE done (full): cost=%s", cost)
-    (run.results / "best_de_cost.txt").write_text(str(cost) + "\n", encoding="utf-8")
-    (run.results / "best_de_pos.txt").write_text(np.array2string(x, separator=", ") + "\n", encoding="utf-8")
+    _write_best_result(run, cost=cost, pos=x, prefix="best_de")
+
     return PSOResult(cost=cost, pos=x)
 

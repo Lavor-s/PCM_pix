@@ -15,7 +15,7 @@ theory_pix_lum.py — "накладываемый" график (2×2) из 3rd 
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
+from ..solution import Solution
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -107,41 +107,23 @@ def T_phi_pix(u, v, state: str, D: float, Npix: int, f_step):
     return Tpix, phipix
 
 
-
-
-
-
 def _pos_to_pred_lum(pos: np.ndarray, sur0, sur1, cfg: dict[str, Any]) -> dict[str, np.ndarray]:
     """
-    Пересчёт "lum" из суррогатов (как в старом ноутбуке: data_pred_0.R_0/R_1/phi_R_0/phi_R_1).
-
-    Важные детали 1-в-1:
-    - a/d/b в pos хранятся в nm
-    - b < b_min -> b=0
-    - R = sqrt(RC^2 + RS^2), phi = atan2(RS, RC)
+    Пересчёт "lum" из суррогатов через унифицированный helper Solution.
     """
-    pos = np.array(pos, dtype=float).ravel()
-    Nn = int(cfg.get("Nn", 11))
-    b_min = float(cfg.get("b_min_m", 50e-9))
+    fields = Solution.predict_fields_from_pos(
+        pos,
+        cfg=cfg,
+        sur0=sur0,
+        sur1=sur1,
+    )
 
-    if len(pos) < 3 * Nn + 4:
-        raise ValueError(f"pos length too small: got {len(pos)} for Nn={Nn} (expected >= {3*Nn+4})")
-
-    a = pos[0:Nn] * 1e-9
-    d = pos[Nn : 2 * Nn] * 1e-9
-    b = pos[2 * Nn : 3 * Nn] * 1e-9
-    b[b < b_min] = 0.0
-
-    pred_0 = sur0.predict(a, d, b).reshape(Nn, 4)
-    pred_1 = sur1.predict(a, d, b).reshape(Nn, 4)
-
-    R_0 = np.sqrt(pred_0[:, 0] ** 2 + pred_0[:, 1] ** 2)
-    R_1 = np.sqrt(pred_1[:, 0] ** 2 + pred_1[:, 1] ** 2)
-    phi_R_0 = np.arctan2(pred_0[:, 1], pred_0[:, 0])
-    phi_R_1 = np.arctan2(pred_1[:, 1], pred_1[:, 0])
-
-    return {"R_0": R_0, "R_1": R_1, "phi_R_0": phi_R_0, "phi_R_1": phi_R_1}
-
+    return {
+        "R_0": fields["reflection"]["am"],
+        "R_1": fields["reflection"]["cr"],
+        "phi_R_0": fields["phase_shift_reflection"]["am"],
+        "phi_R_1": fields["phase_shift_reflection"]["cr"],
+    }
 
 
 @dataclass(frozen=True)
@@ -186,6 +168,8 @@ def plot_theory_pix_lum_overlay_2x2(
     # В старом ноутбуке c1/c2 брались из X[-2], X[-1] (фактически sc_1/sc_2).
     c1 = float(pos[-2])
     c2 = float(pos[-1])
+
+    print(f"c1={c1}, c2={c2}")
 
     # Геометрия для графика (в старом ноутбуке D=220nm, 11 пикселей).
     D = float(D if D is not None else cfg.get("plots_theory_pix_lum_D_m", 220e-6))
@@ -284,27 +268,27 @@ def plot_theory_pix_lum_overlay_2x2(
         #phi_lum_plot = np.array(phi_lum, dtype=float) - float(phi_lum[0])
         #phi_p_lum_plot = np.array(phi_p_lum, dtype=float) - float(phi_p_lum[0]) + np.pi / 2
        
-        phi_lum_plot = align_phase_to_target(phi_lum, target=0)
-        phi_p_lum_plot = align_phase_to_target(phi_p_lum, target=np.pi / 2)
- 
+        phi_lum_plot = Solution.align_phase_to_target(phi_lum, target=0)
+        phi_p_lum_plot = Solution.align_phase_to_target(phi_p_lum, target=np.pi / 2)
+
         ax2_00.plot(pixel_x, T_lum, "1r", markersize=5, mec="k")
         ax2_01.plot(pixel_x, phi_lum_plot, "1r", markersize=5, mec="k")
         ax2_10.plot(pixel_x, T_p_lum, "1r", markersize=5, mec="k")
         ax2_11.plot(pixel_x, phi_p_lum_plot, "1r", markersize=5, mec="k")
 
     if layers.show_lum_exp:
-        phi_lum_am_2_plot = align_phase_to_target(phi_lum, target=0)
-        phi_lum_cr_2_plot = align_phase_to_target(phi_p_lum, target=np.pi / 2)
- 
+        phi_lum_am_2_plot = Solution.align_phase_to_target(phi_lum, target=0)
+        phi_lum_cr_2_plot = Solution.align_phase_to_target(phi_p_lum, target=np.pi / 2)
+
         ax2_00.plot(pixel_x, R_lum_am_2, "2r", markersize=5)
         ax2_01.plot(pixel_x, phi_lum_am_2_plot, "2r", markersize=5)
         ax2_10.plot(pixel_x, R_lum_cr_2, "2r", markersize=5)
         ax2_11.plot(pixel_x, phi_lum_cr_2_plot, "2r", markersize=5)
     
     if layers.show_lum_cones:
-        phi_lum_am_3_plot = align_phase_to_target(phi_lum, target=0)
-        phi_lum_cr_3_plot = align_phase_to_target(phi_p_lum, target=np.pi / 2)
- 
+        phi_lum_am_3_plot = Solution.align_phase_to_target(phi_lum, target=0)
+        phi_lum_cr_3_plot = Solution.align_phase_to_target(phi_p_lum, target=np.pi / 2)
+
         ax2_00.plot(pixel_x, R_lum_am_3, "3g", markersize=5)
         ax2_01.plot(pixel_x, phi_lum_am_3_plot, "3g", markersize=5)
         ax2_10.plot(pixel_x, R_lum_cr_3, "3g", markersize=5)
@@ -322,11 +306,3 @@ def plot_theory_pix_lum_overlay_2x2(
         fig.savefig(out_path)
 
     return fig
-
-def align_phase_to_target(phi, target=0):
-    """
-    Сдвигает фазу так, чтобы первая точка равнялась target, затем приводит все значения в [-π, π].
-    """
-    out = np.asarray(phi, dtype=float) - float(phi[0]) + target
-    out = (out + np.pi) % (2 * np.pi) - np.pi
-    return out

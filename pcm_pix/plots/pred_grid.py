@@ -14,6 +14,7 @@ pred_grid.py — построение таблиц предсказаний су
 
 from dataclasses import dataclass
 from typing import Any
+from pcm_pix.solution import Solution
 
 import numpy as np
 import pandas as pd
@@ -33,13 +34,6 @@ class PredGridCfg:
     filter_a_gt_d: bool = True
     # (иногда в ноутбуке ещё фильтровали d>b; оставляем опцией на будущее)
     filter_d_gt_b: bool = False
-
-
-def _wrap_to_0_2pi(phi: np.ndarray) -> np.ndarray:
-    phi = np.asarray(phi, dtype=float)
-    phi = np.mod(phi, 2 * np.pi)
-    return phi
-
 
 def make_data_pred_grid(
     sur0,
@@ -63,19 +57,12 @@ def make_data_pred_grid(
     d_flat = d_grid.ravel()
     b_flat = b_grid.ravel()
 
-    # суррогаты возвращают [Rcos, Rsin, Tcos, Tsin]
-    pred_0 = np.asarray(sur0.predict(a_flat, d_flat, b_flat), dtype=float)
-    pred_1 = np.asarray(sur1.predict(a_flat, d_flat, b_flat), dtype=float)
-
-    R_0 = np.sqrt(pred_0[:, 0] ** 2 + pred_0[:, 1] ** 2)
-    R_1 = np.sqrt(pred_1[:, 0] ** 2 + pred_1[:, 1] ** 2)
-
-    phi_R_0 = np.arctan2(pred_0[:, 1], pred_0[:, 0])
-    phi_R_1 = np.arctan2(pred_1[:, 1], pred_1[:, 0])
+    R_0, _, phi_R_0, _ = Solution.predict_rtphi(sur0, a_flat, d_flat, b_flat)
+    R_1, _, phi_R_1, _ = Solution.predict_rtphi(sur1, a_flat, d_flat, b_flat)
 
     # как в ноутбуке: фаза в [0..2π)
-    phi_R_0 = _wrap_to_0_2pi(phi_R_0)
-    phi_R_1 = _wrap_to_0_2pi(phi_R_1)
+    phi_R_0 = Solution.wrap_to_0_2pi(phi_R_0)
+    phi_R_1 = Solution.wrap_to_0_2pi(phi_R_1)
 
     df = pd.DataFrame(
         {
