@@ -307,7 +307,9 @@ def resolve_hyperparams(
 ):
     mode = cfg.get(f"{engine}_hyperopt_mode", cfg.get("hyperopt_mode", "run"))
     if mode != "run":
-        raise ValueError(f"Only mode='run' is supported, got: {mode!r}")
+        if logger is not None:
+            logger.info("Skip %s hyperopt (mode=%s)", engine, mode)
+        return None
 
     if engine == "pso":
         best_params, metrics = run_pso_hyperopt(sur0, sur1, cfg, run)
