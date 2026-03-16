@@ -4,9 +4,8 @@ from __future__ import annotations
 optimize.py — целевая функция и оптимизация (PSO / DE / гибрид).
 
 Здесь собрана логика из старого ноутбука, но оформленная как функции:
-- f_vec(...) — целевая функция (векторизованная по частицам PSO)
 - run_pso(...) — запуск PSO (pyswarms)
-- run_pso_until(...) — PSO с перезапусками до достижения порога (как to_server_arch)
+- load_hyperopt_params(...) — загрузка pso/de гиперпараметров из adb_data_dir
 - run_de_full(...) — differential_evolution с init_ar/constraints/callback, максимально 1-в-1
 - run_hybrid_pso_de(...) — последовательный PSO → DE
 
@@ -22,66 +21,16 @@ from pcm_pix.solution import f_vec
 
 
 @dataclass(frozen=True)
-class PSOResult:
+class OPTResult:
     cost: float
     pos: np.ndarray
+
 
 def _write_best_result(run, *, cost: float, pos: np.ndarray, prefix: str = "best") -> None:
     cost_path = run.results / f"{prefix}_cost.txt"
     pos_path = run.results / f"{prefix}_pos.txt"
     cost_path.write_text(str(float(cost)) + "\n", encoding="utf-8")
     pos_path.write_text(np.array2string(np.asarray(pos, dtype=float), separator=", ") + "\n", encoding="utf-8")
-
-
-
-def run_pso(sur0, sur1, cfg: Dict[str, Any], run, save_artifacts: bool = True) -> PSOResult:
-    """
-    Один прогон PSO.
-
-    По умолчанию сохраняет артефакты в `run.results`:
-    - best_cost.txt
-    - best_pos.txt
-
-    Для hyperopt имеет смысл отключать запись (save_artifacts=False), чтобы:
-    - не перетирать финальные best_* файлами от промежуточных прогонов
-    - не тратить время на лишний IO в цикле подбора
-    """
-    Nn = int(cfg.get("Nn", 11))
-    n_particles = int(cfg.get("pso_n_particles", 3000))
-    iters = int(cfg.get("pso_iters", 500))
-
-    lower = np.array([100*1e-9] * Nn + [100*1e-9] * Nn + [0] * Nn + [0] + [0] + [0.8] + [0.8], dtype=float)
-    upper = np.array([1000*1e-9] * Nn + [1000*1e-9] * Nn + [1000*1e-9] * Nn + [2*np.pi] + [2*np.pi] + [1] + [1], dtype=float)
-    bounds = (lower, upper)
-
-    options = {
-        "c1": float(cfg.get("pso_c1", 0.5)),
-        "c2": float(cfg.get("pso_c2", 0.3)),
-        "w": float(cfg.get("pso_w", 0.9)),
-    }
-
-    optimizer = ps.single.GlobalBestPSO(
-        n_particles=n_particles,
-        dimensions=int(len(lower)),
-        options=options,
-        bounds=bounds,
-    )
-
-    run.logger.info("PSO start: particles=%s iters=%s dims=%s", n_particles, iters, len(lower))
-
-    cost, pos = optimizer.optimize(
-        lambda X: f_vec(X, sur0, sur1, cfg),
-        iters=iters,
-        verbose=True,
-    )
-
-    run.logger.info("PSO done: cost=%s", cost)
-
-    if save_artifacts:
-        _write_best_result(run, cost=cost, pos=pos, prefix="best")
-
-    return PSOResult(cost=float(cost), pos=np.array(pos))
-
 
 def _make_bounds_arrays(cfg: Dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     Nn = int(cfg.get("Nn", 11))
@@ -94,78 +43,6 @@ def _make_bounds_arrays(cfg: Dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
         dtype=float,
     )
     return lower, upper
-
-
-def run_de(sur0, sur1, cfg: Dict[str, Any], run, x0: np.ndarray | None = None) -> PSOResult:
-    """
-    Differential Evolution дорабатывает решение.
-    x0: стартовая точка (например, результат PSO или preset pos)
-    """
-    from scipy.optimize import differential_evolution
-
-    lower, upper = _make_bounds_arrays(cfg)
-
-    # SciPy принимает Bounds или список пар; список пар самый совместимый:
-    bounds = list(zip(lower.tolist(), upper.tolist()))
-
-    maxiter = int(cfg.get("de_maxiter", 200))
-    popsize = int(cfg.get("de_popsize", 30))
-    mutation = cfg.get("de_mutation", (0.5, 1.0))  # можно float или (min,max)
-    recombination = float(cfg.get("de_recombination", 0.7))
-    polish = bool(cfg.get("de_polish", True))
-    seed = cfg.get("de_seed", None)
-
-    run.logger.info(
-        "DE start: maxiter=%s popsize=%s mutation=%s recomb=%s polish=%s",
-        maxiter,
-        popsize,
-        mutation,
-        recombination,
-        polish,
-    )
-
-    def obj(x: np.ndarray) -> float:
-        # x shape: (dims,)
-        return float(f_vec(x.reshape(1, -1), sur0, sur1, cfg)[0])
-
-    kwargs = dict(
-        bounds=bounds,
-        maxiter=maxiter,
-        popsize=popsize,
-        mutation=mutation,
-        recombination=recombination,
-        polish=polish,
-        seed=seed,
-        updating="deferred",
-    )
-    if x0 is not None:
-        kwargs["x0"] = np.array(x0, dtype=float)
-
-    result = differential_evolution(obj, **kwargs)
-
-    cost = float(result.fun)
-    pos = np.array(result.x, dtype=float)
-
-    run.logger.info("DE done: cost=%s", cost)
-
-    _write_best_result(run, cost=cost, pos=pos, prefix="best_de")
-
-    return PSOResult(cost=cost, pos=pos)
-
-
-def run_hybrid_pso_de(sur0, sur1, cfg: Dict[str, Any], run) -> PSOResult:
-    """
-    1) PSO -> 2) DE (с x0 = pos из PSO)
-    """
-    best_pso = run_pso(sur0, sur1, cfg, run)
-    best_de = run_de_full(sur0, sur1, cfg, run, pos=best_pso.pos)
-
-    # финально считаем лучшим DE (обычно он улучшает)
-    _write_best_result(run, cost=best_de.cost, pos=best_de.pos, prefix="best")
-
-    return best_de
-
-
 
 def make_linear_constraint(Nn: int):
     """
@@ -195,26 +72,104 @@ def make_linear_constraint(Nn: int):
 
     return LinearConstraint(M, lb, ub, keep_feasible=True)
 
+#==============================================================
+# PSO
+#==============================================================
 
-def make_init_ar_from_pos(pos: np.ndarray, N: int = 1000, seed: int | None = None) -> np.ndarray:
+
+def run_pso(sur0, sur1, cfg: Dict[str, Any], run, save_artifacts: bool = True) -> OPTResult:
     """
-    Ровно как в ноутбуке:
-    B = (rand*2-1)/10/2 + 1  -> множитель в [0.95..1.05]
-    init_ar = tile(pos, (N,1)) * B
+    Один прогон PSO.
+
+    По умолчанию сохраняет артефакты в `run.results`:
+    - best_cost.txt
+    - best_pos.txt
+
+    Для hyperopt имеет смысл отключать запись (save_artifacts=False), чтобы:
+    - не перетирать финальные best_* файлами от промежуточных прогонов
+    - не тратить время на лишний IO в цикле подбора
+    """
+    Nn = int(cfg.get("Nn", 11))
+    n_particles = int(cfg.get("pso_n_particles", 3000))
+    iters = int(cfg.get("pso_iters", 500))
+
+    lower, upper = _make_bounds_arrays(cfg)
+    bounds = (lower, upper)
+
+    options = {
+        "c1": float(cfg.get("pso_c1", 0.5)),
+        "c2": float(cfg.get("pso_c2", 0.3)),
+        "w": float(cfg.get("pso_w", 0.9)),
+    }
+
+    optimizer = ps.single.GlobalBestPSO(
+        n_particles=n_particles,
+        dimensions=int(len(lower)),
+        options=options,
+        bounds=bounds,
+    )
+
+    run.logger.info("PSO start: particles=%s iters=%s dims=%s", n_particles, iters, len(lower))
+
+    cost, pos = optimizer.optimize(
+        lambda X: f_vec(X, sur0, sur1, cfg),
+        iters=iters,
+        verbose=True,
+    )
+
+    run.logger.info("PSO done: cost=%s", cost)
+
+    if save_artifacts:
+        _write_best_result(run, cost=cost, pos=pos, prefix="best")
+
+    return OPTResult(cost=float(cost), pos=np.array(pos))
+
+
+
+
+
+
+
+
+
+
+#==============================================================
+# DE
+#==============================================================
+
+
+
+def make_init_ar_from_pos(
+    pos: np.ndarray,
+    N: int = 1000,
+    seed: int | None = None,
+    cfg: Dict[str, Any] | None = None,
+) -> np.ndarray:
+    """
+    Генерация облака стартовых точек вокруг pos.
+
+    Разброс задаётся через cfg["de_init_spread"] (по умолчанию 0.05),
+    что соответствует диапазону [1 - spread, 1 + spread].
     """
     import numpy as np
 
+    spread = 0.05
+    if cfg is not None:
+        spread = float(cfg.get("de_init_spread", spread))
+
     rng = np.random.default_rng(seed)
     pos = np.array(pos, dtype=float).ravel()
-    B = (rng.random((N, pos.size)) * 2 - 1) / 10 / 2 + 1
+    # rand in [0,1) → (rand*2-1) in [-1,1) → масштаб в [1-spread, 1+spread)
+    B = (rng.random((N, pos.size)) * 2 - 1) * spread + 1.0
     init_ar = np.tile(pos, (N, 1)) * B
     return init_ar
 
 
+
+
 def f_de(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
     """
-    Аналог f(...) из ноутбука для differential_evolution(vectorized=True).
-    SciPy подаёт X формы (dims, n_pop). Мы приводим к (n_pop, dims) и зовём f_vec.
+    Адаптер f(...): (dims, n_pop) приводим к (n_pop, dims)
     """
     import numpy as np
 
@@ -232,31 +187,18 @@ def f_de(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
     return f_vec(X, sur0, sur1, cfg)
 
 
-def run_pso_until(sur0, sur1, cfg: Dict[str, Any], run, save_artifacts: bool = True) -> PSOResult:
-    """
-    Полное соответствие to_server_arch:
-    повторяем PSO с reset(), пока cost не станет <= порога (или пока не исчерпаем рестарты).
-    """
-    import numpy as np
-
-    threshold = float(cfg.get("pso_threshold", np.inf))  # в ноутбуке было 4
-    max_restarts = int(cfg.get("pso_max_restarts", 0))   # сколько раз можно reset()
-
-    # используем твою существующую run_pso, но добавляем цикл
-    best = run_pso(sur0, sur1, cfg, run, save_artifacts=save_artifacts)
-
-    restarts = 0
-    while best.cost > threshold and restarts < max_restarts:
-        restarts += 1
-        run.logger.info("PSO restart %s/%s (cost=%s > %s)", restarts, max_restarts, best.cost, threshold)
-
-        # пересоздадим оптимизатор тем же кодом, что в run_pso (самый простой способ)
-        best = run_pso(sur0, sur1, cfg, run, save_artifacts=save_artifacts)
-
-    return best
-
-
-def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSOResult:
+def run_de_full(
+    sur0,
+    sur1,
+    cfg: Dict[str, Any],
+    run,
+    pos: np.ndarray,
+    *,
+    save_artifacts: bool = True,
+    enable_callback: bool = True,
+    log_start_done: bool = True,
+    write_progress: bool = True,
+) -> OPTResult:
     """
     Полное соответствие to_server_arch:
     - Bounds(... keep_feasible=True)
@@ -282,6 +224,7 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
     tol = float(cfg.get("de_tol", 1e-12))
     atol = float(cfg.get("de_atol", 1e-12))
     polish = bool(cfg.get("de_polish", True))
+    seed = cfg.get("de_seed", None)
     updating = cfg.get("de_updating", "deferred")
 
     # init_ar как в ноутбуке
@@ -290,7 +233,7 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
     init_seed = cfg.get("de_init_seed", None)
 
     if init_mode == "init_ar":
-        init = make_init_ar_from_pos(pos, N=init_N, seed=init_seed)
+        init = make_init_ar_from_pos(pos, N=init_N, seed=init_seed, cfg=cfg)
         x0 = None
     else:
         init = "latinhypercube"
@@ -317,14 +260,16 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
             run.logger.info("Conv %s %.6f", it, val)
             run.logger.info("%s", s)
 
-            # файл прогресса как аналог старого OUTPUT/NAME
-            p = run.results / "de_progress.txt"
-            append_text(p, f"{it:4d}  {val: .6f}\n{s}\n")
+            if write_progress:
+                # файл прогресса как аналог старого OUTPUT/NAME
+                p = run.results / "de_progress.txt"
+                append_text(p, f"{it:4d}  {val: .6f}\n{s}\n")
 
             runtime = time.time() - start_time
             run.logger.info("Runtime %.1f min", runtime / 60)
 
-    run.logger.info("DE start (full): maxiter=%s popsize=%s init_mode=%s lc=%s", maxiter, popsize, init_mode, use_lc)
+    if log_start_done:
+        run.logger.info("DE start (full): maxiter=%s popsize=%s init_mode=%s lc=%s", maxiter, popsize, init_mode, use_lc)
 
     result = differential_evolution(
         lambda X: f_de(X, sur0, sur1, cfg),  # vectorized!
@@ -338,8 +283,9 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
         tol=tol,
         atol=atol,
         polish=polish,
+        seed=seed,
         updating=updating,
-        callback=callbackF,
+        callback=callbackF if enable_callback else None,
         vectorized=True,
         constraints=constraints,
     )
@@ -347,8 +293,92 @@ def run_de_full(sur0, sur1, cfg: Dict[str, Any], run, pos: np.ndarray) -> PSORes
     cost = float(result.fun)
     x = np.array(result.x, dtype=float)
 
-    run.logger.info("DE done (full): cost=%s", cost)
-    _write_best_result(run, cost=cost, pos=x, prefix="best_de")
+    if log_start_done:
+        run.logger.info("DE done (full): cost=%s", cost)
+    if save_artifacts:
+        _write_best_result(run, cost=cost, pos=x, prefix="best_de")
 
-    return PSOResult(cost=cost, pos=x)
+    return OPTResult(cost=cost, pos=x)
 
+
+
+
+#==============================================================
+# Hybrid PSO + DE
+#==============================================================
+
+
+def run_hybrid_pso_de(sur0, sur1, cfg: Dict[str, Any], run) -> OPTResult:
+    """
+    1) PSO -> 2) DE (с x0 = pos из PSO)
+    """
+    best_pso = run_pso(sur0, sur1, cfg, run)
+    best_de = run_de_full(sur0, sur1, cfg, run, pos=best_pso.pos)
+
+    # финально считаем лучшим DE (обычно он улучшает)
+    _write_best_result(run, cost=best_de.cost, pos=best_de.pos, prefix="best")
+
+    return best_de
+
+
+
+#==============================================================
+# Hyperparams
+#==============================================================
+
+
+def load_hyperopt_params(
+    cfg: Dict[str, Any],
+    run=None,
+    filename: str = "hyperparams_final.json",
+) -> bool:
+    """
+    Если в cfg["adb_data_dir"] есть JSON с итоговыми гиперпараметрами, применяет их в cfg.
+
+    Ожидаемый формат (из hyperopt2.py):
+    {
+      "pso": {"params": {"c1": ..., "c2": ..., "w": ...}, ...},
+      "de":  {"params": {"mutation": ..., "recombination": ..., ...}, ...}
+    }
+
+    Также поддерживается упрощённый формат:
+    {
+      "pso": {"c1": ..., "c2": ..., "w": ...},
+      "de":  {"mutation": ..., "recombination": ..., ...}
+    }
+    """
+    import json
+    from pathlib import Path
+
+    adb_dir = Path(str(cfg.get("adb_data_dir", "data")))
+    hp_path = adb_dir / filename
+    if not hp_path.exists():
+        if run is not None and hasattr(run, "logger"):
+            run.logger.info("No hyperparams file found: %s", hp_path)
+        return False
+
+    data = json.loads(hp_path.read_text(encoding="utf-8"))
+    applied_keys: list[str] = []
+
+    for engine in ("pso", "de"):
+        block = data.get(engine)
+        if not isinstance(block, dict):
+            continue
+
+        params = block.get("params")
+        if not isinstance(params, dict):
+            # fallback: считаем, что в block уже лежат параметры
+            params = block
+
+        for name, value in params.items():
+            cfg_key = f"{engine}_{name}"
+            cfg[cfg_key] = value
+            applied_keys.append(cfg_key)
+
+    if run is not None and hasattr(run, "logger"):
+        if applied_keys:
+            run.logger.info("Loaded hyperparams from %s (%s keys)", hp_path, len(applied_keys))
+        else:
+            run.logger.info("Hyperparams file %s has no usable pso/de params", hp_path)
+
+    return bool(applied_keys)

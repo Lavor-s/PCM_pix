@@ -81,7 +81,6 @@ def run_pso_hyperopt(
     from itertools import product
 
     # import here to avoid circular import at module load time
-    from .optimize import run_pso_until
 
     rng = np.random.default_rng(int(cfg.get("hyperopt_seed", 42)))
 
@@ -107,7 +106,7 @@ def run_pso_hyperopt(
 
         np.random.seed(seed)
         # В hyperopt-цикле отключаем запись best_pos/best_cost, чтобы не перетирать финальные артефакты.
-        best = run_pso_until(sur0, sur1, local, run, save_artifacts=False)
+        best = run_pso(sur0, sur1, local, run, save_artifacts=False)
         return float(best.cost)
 
     rows: list[dict[str, Any]] = []
