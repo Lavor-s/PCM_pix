@@ -18,8 +18,10 @@ gds.py — экспорт GDS для фабрикации (перенос из `
 
 Важно:
 - `gdspy` считается опциональной зависимостью. Если её нет — выдаём понятную ошибку.
-- Для расширения (Al2O3, разные слои, подписи) лучше добавлять новые функции,
-  не ломая базовый экспорт.
+- Опционально: вторая ячейка (по умолчанию `CELL_1`) с покрывающим кольцом Al2O3:
+  внешний радиус +r_m, внутренний полурадиус max(0, b_in - r_m), как в 3rd art.
+- Нумерация GDS-layer: `layer_all_zero=True` (по умолчанию) — обе ячейки: layer=0, datatype=0;
+  иначе layer растёт на 1 каждые `layer_step_n` дисков (один счётчик по сетке колец Si).
 """
 
 from dataclasses import dataclass
@@ -54,10 +56,19 @@ class GDSFabCfg:
     margin_m: float = 50e-9  # (L - margin) / period
     l_m: float = 20e-6  # ширина каждой полосы по X
     L_m: float | None = None  # высота по Y; если None -> 11*l
-    ring_limit: int = 1000  # после N колец увеличиваем num_lay (в fab-режиме слой не меняется)
-    layer_mode: str = "fab"  # "fab" -> layer 0; "lum" -> layer=num_lay
-    layer0: tuple[int, int] = (0, 0)  # (layer, datatype)
+    ring_limit: int = 1000  # устар.; раньше: lum + шаг num_lay; см. layer_all_zero / layer_step_n
+    layer_mode: str = "fab"  # устар. для нумерации слоёв; см. layer_all_zero / layer_step_n
+    layer0: tuple[int, int] = (0, 0)  # при layer_all_zero=False: layer = disk//step_n; datatype — для Si и Al2O3
     tolerance: float = 0.001
+    # Нумерация GDS-layer для обеих ячеек (Si и Al2O3):
+    # - layer_all_zero=True (по умолчанию): всегда layer=0, datatype=0;
+    # - layer_all_zero=False: layer += 1 каждые layer_step_n дисков (один счётчик на позицию в сетке).
+    layer_all_zero: bool = True
+    layer_step_n: int = 1000
+    # Покрывающий слой Al2O3 (вторая ячейка в той же библиотеке)
+    al2o3_cover_enable: bool = False
+    al2o3_r_m: float = 100e-9  # +r к внешнему радиусу, −r к внутреннему (половина b)
+    al2o3_cell_name: str = "CELL_1"
 
 
 def compute_edge_and_number_x(a_m: np.ndarray, *, l_m: float) -> tuple[np.ndarray, np.ndarray]:
@@ -138,13 +149,18 @@ def export_fabrication_gds(
     if len(number_x) != Nn:
         raise ValueError(f"number_x must have length Nn={Nn}, got {len(number_x)}")
 
+    step_n = int(cfg.layer_step_n)
+    if not cfg.layer_all_zero and step_n < 1:
+        raise ValueError(f"layer_step_n must be >= 1, got {step_n}")
+
     # --- init library ---
     gdspy.current_library = gdspy.GdsLibrary()
     lib = gdspy.GdsLibrary()
-    cell = lib.new_cell("CELL_0")
+    cell_si = lib.new_cell("CELL_0")
+    cell_al2o3 = lib.new_cell(cfg.al2o3_cell_name) if cfg.al2o3_cover_enable else None
 
-    num_lay = 0
-    ring_col = 0
+    r_al = float(cfg.al2o3_r_m)
+    disk_i = 0
 
     for i in range(Nn):
         rad = float(d_m[i]) / 2.0
@@ -157,19 +173,21 @@ def export_fabrication_gds(
         j_col = int(number_x[i])
         k_col = int((L_m - cfg.margin_m) / per)
 
-        num_lay += 1
-
         for k in range(k_col):
             for j in range(j_col):
                 x_center = x0 + per * j + per / 2
                 y_center = y0 + per * k + per / 2
 
-                if cfg.layer_mode == "lum":
-                    layer = {"layer": int(num_lay), "datatype": int(cfg.layer0[1])}
+                if cfg.layer_all_zero:
+                    layer_si = {"layer": 0, "datatype": 0}
+                    layer_al = {"layer": 0, "datatype": 0}
                 else:
-                    layer = {"layer": int(cfg.layer0[0]), "datatype": int(cfg.layer0[1])}
+                    lay = disk_i // step_n
+                    dt = int(cfg.layer0[1])
+                    layer_si = {"layer": int(lay), "datatype": dt}
+                    layer_al = {"layer": int(lay), "datatype": dt}
 
-                cell.add(
+                cell_si.add(
                     gdspy.Round(
                         (x_center * cfg.multipl, y_center * cfg.multipl),
                         rad * cfg.multipl,
@@ -177,14 +195,26 @@ def export_fabrication_gds(
                         initial_angle=-np.pi,
                         final_angle=np.pi,
                         tolerance=cfg.tolerance,
-                        **layer,
+                        **layer_si,
                     )
                 )
 
-                ring_col += 1
-                if ring_col > cfg.ring_limit:
-                    ring_col = 0
-                    num_lay += 1
+                if cell_al2o3 is not None:
+                    rad_al = rad + r_al
+                    b_in_al = max(0.0, b_in - r_al)
+                    cell_al2o3.add(
+                        gdspy.Round(
+                            (x_center * cfg.multipl, y_center * cfg.multipl),
+                            rad_al * cfg.multipl,
+                            inner_radius=b_in_al * cfg.multipl,
+                            initial_angle=-np.pi,
+                            final_angle=np.pi,
+                            tolerance=cfg.tolerance,
+                            **layer_al,
+                        )
+                    )
+
+                disk_i += 1
 
     # --- write files ---
     gds_path = out_dir / f"{cfg.name}.gds"
@@ -204,6 +234,14 @@ def export_fabrication_gds(
         D = round(d_m[i] * 1e9, 0)
         B = round(b_m[i] * 1e9, 0)
         lines.append(f"{A}\t{D}\t{B}\n")
+
+    if cfg.al2o3_cover_enable:
+        lines.append(
+            f"# Al2O3 cover: cell={cfg.al2o3_cell_name!r}, r_m={cfg.al2o3_r_m}\n"
+        )
+    lines.append(
+        f"# layers: all_zero={cfg.layer_all_zero}, step_n={cfg.layer_step_n}\n"
+    )
 
     if meta:
         lines.append("\n# meta\n")

@@ -678,7 +678,7 @@ def plot_output_slices_1x2(
             f"$\\lambda = {wl_gl*1e9:.0f}$ nm, "
             f"$f = {f_gl*1e3:.0f}$ mm, "
             f"$D = {S_gl*1e6:.0f}$ $\\mu m$ " "\n"
-            r"$\alpha = \dfrac{2w_0}{D} = \dfrac{8 f \lambda}{\pi D w}$"
+            r"$\alpha = \dfrac{2w_0}{D} = \dfrac{2 f \lambda}{\pi D w}$"
         )
         fig.tight_layout()
         return fig

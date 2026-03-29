@@ -146,44 +146,86 @@ def make_init_ar_from_pos(
     cfg: Dict[str, Any] | None = None,
 ) -> np.ndarray:
     """
-    Генерация облака стартовых точек вокруг pos.
-
-    Разброс задаётся через cfg["de_init_spread"] (по умолчанию 0.05),
-    что соответствует диапазону [1 - spread, 1 + spread].
+    Генерация облака стартовых точек вокруг pos + обязательный repair:
+    1) clip в bounds из _make_bounds_arrays(cfg)
+    2) приведение к линейным ограничениям из make_linear_constraint(Nn)
     """
     import numpy as np
 
-    spread = 0.05
-    if cfg is not None:
-        spread = float(cfg.get("de_init_spread", spread))
+    if cfg is None:
+        raise ValueError("cfg is required for bounds/constraints repair")
 
+    spread = float(cfg.get("de_init_spread", 0.05))
     rng = np.random.default_rng(seed)
+
     pos = np.array(pos, dtype=float).ravel()
-    # rand in [0,1) → (rand*2-1) in [-1,1) → масштаб в [1-spread, 1+spread)
     B = (rng.random((N, pos.size)) * 2 - 1) * spread + 1.0
     init_ar = np.tile(pos, (N, 1)) * B
+
+    # --- 1) clip по bounds ---
+    lower, upper = _make_bounds_arrays(cfg)
+    init_ar = np.clip(init_ar, lower, upper)
+
+    # --- 2) repair по LinearConstraint ---
+    Nn = int(cfg.get("Nn", 11))
+    lc = make_linear_constraint(Nn)
+
+    # Используем сам объект ограничения (A, lb, ub), как ты и просил.
+    A = np.asarray(lc.A, dtype=float)
+    lb = np.asarray(lc.lb, dtype=float)
+
+    # Индексы сегментов [a|d|b]
+    ia = np.arange(0, Nn)
+    id_ = np.arange(Nn, 2 * Nn)
+    ib = np.arange(2 * Nn, 3 * Nn)
+
+    # 1) a - d >= 50e-9  -> d <= a - 50e-9
+    # 2) d - b >= 100e-9 -> b <= d - 100e-9
+    gap_ad = float(lb[0])       # 50e-9
+    gap_db = float(lb[Nn])      # 100e-9
+
+    # Делаем точки заведомо feasible относительно линейных ограничений.
+    # Сначала поднимаем a минимум до (lower_d + gap_ad), чтобы существовал feasible d.
+    min_a = lower[id_] + gap_ad
+    init_ar[:, ia] = np.maximum(init_ar[:, ia], min_a)
+
+    # d в [lower_d, min(upper_d, a-gap_ad)]
+    d_hi = np.minimum(upper[id_], init_ar[:, ia] - gap_ad)
+    init_ar[:, id_] = np.clip(init_ar[:, id_], lower[id_], d_hi)
+
+    # b в [lower_b, min(upper_b, d-gap_db)]
+    b_hi = np.minimum(upper[ib], init_ar[:, id_] - gap_db)
+    b_hi = np.maximum(b_hi, lower[ib])  # страховка от численных артефактов
+    init_ar[:, ib] = np.clip(init_ar[:, ib], lower[ib], b_hi)
+
+    # Финальный clip по bounds
+    init_ar = np.clip(init_ar, lower, upper)
+
+    # (опц.) Проверка через матрицу LinearConstraint:
+    # viol = (A @ init_ar.T) - lb[:, None]
+    # assert np.all(viol >= -1e-15), "init_ar is not feasible for linear constraints"
+
     return init_ar
 
 
 
 
-def f_de(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
-    """
-    Адаптер f(...): (dims, n_pop) приводим к (n_pop, dims)
-    """
-    import numpy as np
 
+
+def f_de(X: np.ndarray, sur0, sur1, cfg: Dict[str, Any]) -> np.ndarray:
+    import numpy as np
     X = np.asarray(X, dtype=float)
     dims = int(cfg.get("dims", X.shape[0]))
-
+    # Важно для SciPy DE + constraints + vectorized:
+    # иногда приходит пустой батч (S=0 feasible).
+    if X.size == 0:
+        return np.empty((0,), dtype=float)
+    if X.ndim == 2 and 0 in X.shape:
+        return np.empty((0,), dtype=float)
     if X.ndim == 1:
         return f_vec(X.reshape(1, -1), sur0, sur1, cfg)
-
-    # если пришло (dims, n_pop)
     if X.shape[0] == dims:
         return f_vec(X.T, sur0, sur1, cfg)
-
-    # если вдруг пришло (n_pop, dims)
     return f_vec(X, sur0, sur1, cfg)
 
 

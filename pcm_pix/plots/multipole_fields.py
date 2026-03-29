@@ -43,9 +43,33 @@ def load_multipole_table(path: str | Path) -> pd.DataFrame:
 
 
 def _to_complex_series(s: pd.Series) -> pd.Series:
-    # заменить i -> j и сконвертировать
-    s2 = s.astype(str).str.replace("i", "j", regex=False)
-    return s2.map(complex)
+    s2 = s.astype(str).str.strip()
+
+    # "i" -> "j"
+    s2 = s2.str.replace("i", "j", regex=False)
+
+    # часто после замены получается "1.0 + 2.0 j" -> complex не любит пробел перед j
+    s2 = s2.str.replace(r"\s+", "", regex=True)
+
+    def parse_one(x: str):
+        xl = str(x).strip()
+        if xl.lower() in ("nan", "none", ""):
+            return complex("nan")
+
+        s = xl.replace("i", "j", 1)
+        s = s.replace("D", "E").replace("d", "E")  # если научная нотация встречается
+        s = s.replace(",", ".")                    # на всякий случай
+        s = "".join(s.split())                    # убираем пробелы
+
+        # ключевое: python complex не любит "+-" и "-+"
+        while "+-" in s:
+            s = s.replace("+-", "-")
+        while "-+" in s:
+            s = s.replace("-+", "-")
+
+        return complex(s)
+
+    return s2.map(parse_one)
 
 
 def load_field_table(path: str | Path) -> pd.DataFrame:
@@ -104,8 +128,8 @@ def select_field_by_wavelength_nearest(field: pd.DataFrame, wl_target_m: float) 
 
 def _norm01(z: np.ndarray) -> np.ndarray:
     z = np.asarray(z, dtype=float)
-    m = float(np.max(z))
-    return z / m if m > 0 else z
+    m = float(np.max(np.max(z)))
+    return z / m
 
 
 def _slice_xy(df: pd.DataFrame, *, z0: float, z_rel: float = 0.01) -> pd.DataFrame:
@@ -126,11 +150,11 @@ def plot_multipole_and_fields(
     multi: pd.DataFrame,
     field: pd.DataFrame,
     *,
-    field_wl_target_nm: float | None = 850.0,
+    field_wl_target_nm: float | None = 1550.0,
     z_xy: float = 76.1538e-9,
-    z_rel: float = 0.01,
+    z_rel: float = 0.02,
     x_eps: float = 1e-12,
-    wl_marker_nm: float = 850.0,
+    wl_marker_nm: float = 1550.0,
     out_path: str | Path | None = None,
     figsize: tuple[float, float] = (6.9, 4.0),
     dpi: int | None = None,
@@ -140,6 +164,10 @@ def plot_multipole_and_fields(
     - multipole decomposition (нормированный на max(SUM))
     - |E|^2 и |H|^2 в XY и YZ плоскостях
     """
+    diameter = 0.327
+    inner_diameter = 0.074
+    height = 0.22
+
     fig, axs = plt.subplots(2, 4, figsize=figsize, dpi=dpi)
 
     # удалим 4 оси слева и сделаем одну большую
@@ -164,7 +192,7 @@ def plot_multipole_and_fields(
         title="Multipole decomposition",
         xlabel=r"$\lambda$, nm",
         ylabel=r"$\sigma_{scat}$",
-        xlim=[800, 900],
+        xlim=[1400, 1700],
         ylim=[0, 1.1],
     )
     axbig.legend(loc=1)
@@ -175,7 +203,7 @@ def plot_multipole_and_fields(
     if field_wl_target_nm is not None:
         field, wl_sel = select_field_by_wavelength_nearest(field, float(field_wl_target_nm) * 1e-9)
         # небольшая подпись для диагностики
-        axbig.text(802, 0.93, f"field wl={wl_sel*1e9:.2f} nm", fontsize=8)
+        #axbig.text(802, 0.93, f"field wl={wl_sel*1e9:.2f} nm", fontsize=8)
 
     # --- XY plane ---
     df_xy = _slice_xy(field, z0=z_xy, z_rel=z_rel)
@@ -229,14 +257,15 @@ def plot_multipole_and_fields(
     axs[0, 3].set(title=r"$|H|^2$ in XY plane", xlabel=r"x, $\mu$m", ylabel=r"y, $\mu$m", xlim=[-0.2, 0.2], ylim=[-0.2, 0.2])
     axs[1, 3].set(title=r"$|H|^2$ in YZ plane", xlabel=r"y, $\mu$m", ylabel=r"z, $\mu$m", xlim=[-0.2, 0.2], ylim=[-0.1, 0.3])
 
+
     # окружности/прямоугольники (как в исходном)
     for ax in (axs[0, 2], axs[0, 3]):
-        ax.add_artist(plt.Circle((0, 0), 0.327 / 2, fill=False, linewidth=0.7, color="r", linestyle="--"))
-        ax.add_artist(plt.Circle((0, 0), 0.074 / 2, fill=False, linewidth=0.7, color="r", linestyle="--"))
+        ax.add_artist(plt.Circle((0, 0), diameter / 2, fill=False, linewidth=0.7, color="r", linestyle="--"))
+        ax.add_artist(plt.Circle((0, 0), inner_diameter / 2, fill=False, linewidth=0.7, color="r", linestyle="--"))
 
     for ax in (axs[1, 2], axs[1, 3]):
-        ax.add_artist(patches.Rectangle((-0.327 / 2, 0), (0.327 - 0.074) / 2, 0.150, fill=False, linewidth=0.7, color="r", linestyle="--"))
-        ax.add_artist(patches.Rectangle((-0.327 / 2 + (0.327 + 0.074) / 2, 0), (0.327 - 0.074) / 2, 0.150, fill=False, linewidth=0.7, color="r", linestyle="--"))
+        ax.add_artist(patches.Rectangle((-diameter / 2, 0), (diameter - inner_diameter) / 2, height, fill=False, linewidth=0.7, color="r", linestyle="--"))
+        ax.add_artist(patches.Rectangle((-diameter / 2 + (diameter + inner_diameter) / 2, 0), (diameter - inner_diameter) / 2, height, fill=False, linewidth=0.7, color="r", linestyle="--"))
 
     # стрелочки белые (как в ноутбуке)
     for ax in (axs[0, 2], axs[0, 3]):
@@ -252,7 +281,7 @@ def plot_multipole_and_fields(
     axs[1, 2].set_box_aspect(1)
     axs[1, 3].set_box_aspect(1)
 
-    axbig.text(802, 1.025, "(a)")
+    #axbig.text(802, 1.025, "(a)")
     axs[0, 2].text(-0.19, 0.14, "(b)", color="w")
     axs[1, 2].text(-0.19, 0.24, "(c)", color="w")
     axs[0, 3].text(-0.19, 0.14, "(d)", color="w")

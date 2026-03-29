@@ -1,0 +1,37 @@
+{
+  "pso": {
+    "params": {
+      "c1": 1.4006010017715806,
+      "c2": 0.6479191118309222,
+      "w": 0.6003081724652297,
+      "n_particles": 3447,
+      "iters": 347
+    },
+    "metrics": {
+      "cost_median": 0.677302302566543,
+      "cost_mean": 0.677302302566543,
+      "cost_min": 0.677302302566543
+    }
+  },
+  "de": {
+    "params": {
+      "mutation": 1.0561428631227525,
+      "recombination": 0.29499059577684705,
+      "popsize": 22,
+      "init_N": 1000,
+      "init_spread": 0.11947360581187279,
+      "tol": 1e-12,
+      "atol": 0.001,
+      "maxiter": 1000000,
+      "polish": true,
+      "use_linear_constraint": true,
+      "updating": "deferred",
+      "init_mode": "init_ar"
+    },
+    "metrics": {
+      "cost_median": Infinity,
+      "cost_mean": Infinity,
+      "cost_min": Infinity
+    }
+  }
+}
